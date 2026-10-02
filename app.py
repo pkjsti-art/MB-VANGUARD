@@ -9,7 +9,7 @@ st.set_page_config(
     layout="wide",
 )
 
-# Custom Styling CSS (Perbaikan kontras teks hitam di card putih & styling sidebar)
+# Custom Styling CSS (Perbaikan kontras teks sidebar & card menjadi hitam/gelap)
 st.markdown(
     """
     <style>
@@ -50,8 +50,8 @@ st.markdown(
         box-shadow: 0 2px 8px rgba(0,0,0,0.05);
     }
     div[data-testid="metric-container"] label {
-        color: #333333 !important;
-        font-weight: 600 !important;
+        color: #111111 !important;
+        font-weight: 700 !important;
     }
     div[data-testid="metric-container"] [data-testid="stMetricValue"] {
         color: #0083B0 !important;
@@ -75,10 +75,17 @@ st.markdown(
         box-shadow: 0 6px 15px rgba(255, 215, 0, 0.6);
     }
 
-    /* Sidebar Styling */
+    /* Sidebar Styling & Perbaikan Warna Teks Sidebar agar Jelas (Hitam/Gelap) */
     section[data-testid="stSidebar"] {
         background-color: #E6F2FF;
         border-right: 1px solid #CCE4FF;
+    }
+    section[data-testid="stSidebar"] span, 
+    section[data-testid="stSidebar"] p, 
+    section[data-testid="stSidebar"] label, 
+    section[data-testid="stSidebar"] div {
+        color: #111111 !important;
+        font-weight: 600;
     }
     </style>
 """,
@@ -127,7 +134,7 @@ if menu_pilihan == "📂 Master Data (Upload)":
 
     for file in uploaded_files:
       try:
-        # Membaca file Excel tanpa header dulu untuk pembersihan baris sampah ERP
+        # Membaca file Excel tanpa header dulu untuk pembersihan 4 baris header ERP
         df_raw = pd.read_excel(file, header=None)
 
         # 1. Membersihkan baris header ERP (mencari baris yang mengandung 'Tanggal', 'Gudang', 'Kode')
@@ -148,13 +155,17 @@ if menu_pilihan == "📂 Master Data (Upload)":
         else:
           df_clean = df_raw.iloc[4:].copy()
           df_clean.columns = df_raw.iloc[3]
-          df_clean = df_clean.iloc[1:].copy()
+          df_clean.iloc[1:].copy()
 
-        # 2. Membersihkan baris kosong / baris summary ERP (Total Bahan Baku, Total Pekerjaan, dll.)
-        df_clean = df_clean.dropna(subset=[df_clean.columns[1]])
-        if "No" in df_clean.columns:
+        # 2. Hanya membersihkan sel/baris kosong di kolom 'Kode Item' di setiap akhir kelompok data (tanpa menghapus baris transaksi penting)
+        if "Kode Item" in df_clean.columns:
+          # Buang baris di mana Kode Item kosong total DAN bukan bagian dari ringkasan total harga
           df_clean = df_clean[
-              ~df_clean["No"].astype(str).str.contains("TOTAL|Overhead", na=False)
+              ~(
+                  df_clean["Kode Item"].isna()
+                  & df_clean["Nama Item"].isna()
+                  & df_clean["Qty"].isna()
+              )
           ]
 
         all_dataframes.append(df_clean)
@@ -184,12 +195,12 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
   else:
     if st.button("🚀 Jalankan Proses & Validasi Data"):
       with st.spinner(
-          "Sedang memproses forward fill, standarisasi satuan, dan rumus"
+          "Sedang memproses forward fill, penempatan kolom, dan rumus"
           " audit..."
       ):
         master_df = st.session_state.raw_master.copy()
 
-        # 1. Forward Fill kolom identitas
+        # 1. Forward Fill kolom identitas agar kelompok transaksi tetap utuh
         fill_cols = [
             "Gudang",
             "Kode",
@@ -201,7 +212,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           if col in master_df.columns:
             master_df[col] = master_df[col].ffill()
 
-        # 2. Standarisasi Qty Target Standar (GR)
+        # 2. Standarisasi Qty Target Standar (GR) & posisikan di sebelah kanan kolom Target Unit
         if (
             "Target Qty" in master_df.columns
             and "Target Unit" in master_df.columns
@@ -214,10 +225,20 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               ),
               axis=1,
           )
+          # Mengatur ulang posisi kolom agar QTY Target Standar (GR) tepat di sebelah kanan Target Unit
+          cols = list(master_df.columns)
+          if (
+              "QTY Target Standar (GR)" in cols
+              and "Target Unit" in cols
+          ):
+            cols.remove("QTY Target Standar (GR)")
+            target_unit_idx = cols.index("Target Unit")
+            cols.insert(target_unit_idx + 1, "QTY Target Standar (GR)")
+            master_df = master_df[cols]
         else:
           master_df["QTY Target Standar (GR)"] = 0
 
-        # 3. Standarisasi Qty Bahan Baku Standar (GR)
+        # 3. Standarisasi Qty Bahan Baku Standar (GR) & posisikan di sebelah kanan kolom Qty
         if "Qty" in master_df.columns and "Unit" in master_df.columns:
           master_df["Qty BB Standar (GR)"] = master_df.apply(
               lambda row: (
@@ -227,6 +248,13 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               ),
               axis=1,
           )
+          # Mengatur ulang posisi kolom agar Qty BB Standar (GR) tepat di sebelah kanan Qty
+          cols = list(master_df.columns)
+          if "Qty BB Standar (GR)" in cols and "Qty" in cols:
+            cols.remove("Qty BB Standar (GR)")
+            qty_idx = cols.index("Qty")
+            cols.insert(qty_idx + 1, "Qty BB Standar (GR)")
+            master_df = master_df[cols]
         else:
           master_df["Qty BB Standar (GR)"] = 0
 
@@ -238,7 +266,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
         if "Nama Barang Jadi" not in master_df.columns:
           master_df["Nama Barang Jadi"] = ""
 
-        # Fungsi Algoritma Audit per Baris
+        # Fungsi Algoritma Audit per Baris (menggunakan Kode Item dan Nama Item)
         cek_jumlah_benang_list = []
         crosscheck_qty_list = []
         selisih_list = []
@@ -257,7 +285,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
         for idx, row in master_df.iterrows():
           kode_trans = str(row.get("Kode", ""))
           gudang = str(row.get("Gudang", ""))
-          kode_bb = str(row.get("Kode Bahan Baku", ""))
+          kode_item = str(row.get("Kode Item", ""))
           nama_brg_jdi = str(row.get("Nama Barang Jadi", ""))
           ket = str(row.get("Keterangan", ""))
           ket_lain = str(row.get("Keterangan Lain", ""))
@@ -265,8 +293,8 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           if (
               not kode_trans
               or kode_trans == "nan"
-              or not kode_bb
-              or kode_bb == "nan"
+              or not kode_item
+              or kode_item == "nan"
           ):
             cek_jumlah_benang_list.append("")
             crosscheck_qty_list.append("")
@@ -285,20 +313,20 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
 
           if gudang == "PRODUKSI SOFTCONE":
             benang_sub = sub_df[
-                sub_df["Kode Bahan Baku"]
+                sub_df["Kode Item"]
                 .astype(str)
                 .str.startswith(("TBB", "MBB", "MWP", "TWP", "TBM"), na=False)
             ]
           else:
             benang_sub = sub_df[
-                sub_df["Kode Bahan Baku"]
+                sub_df["Kode Item"]
                 .astype(str)
                 .str.startswith(("TWP", "MWP", "TBM"), na=False)
             ]
 
           if not benang_sub.empty:
             unique_benang = ", ".join(
-                benang_sub["Kode Bahan Baku"].astype(str).unique()
+                benang_sub["Kode Item"].astype(str).unique()
             )
             cek_jumlah_benang_list.append(unique_benang)
           else:
@@ -325,7 +353,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           if gudang == "PRODUKSI SOFTCONE":
             total_bb = round(
                 benang_sub[
-                    benang_sub["Kode Bahan Baku"]
+                    benang_sub["Kode Item"]
                     .astype(str)
                     .str.startswith(("TBB", "MBB", "TWP", "TBM", "MWP"), na=False)
                 ]["Qty BB Standar (GR)"].sum(),
@@ -334,7 +362,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           elif gudang in ["Gudang mesin dyeing", "GUDANG LAB & RnD"]:
             total_bb = round(
                 benang_sub[
-                    benang_sub["Kode Bahan Baku"]
+                    benang_sub["Kode Item"]
                     .astype(str)
                     .str.startswith(("TWP", "MWP", "TBM"), na=False)
                 ]["Qty BB Standar (GR)"].sum(),
