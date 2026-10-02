@@ -9,7 +9,7 @@ st.set_page_config(
     layout="wide",
 )
 
-# Custom Styling CSS (Perbaikan kontras teks sidebar & card menjadi hitam/gelap)
+# Custom Styling CSS (Kontras teks hitam pada sidebar & card putih)
 st.markdown(
     """
     <style>
@@ -41,7 +41,7 @@ st.markdown(
         opacity: 0.9;
     }
 
-    /* Memastikan Teks di dalam Card/Metric Streamlit Terlihat Jelas (Hitam di atas Putih) */
+    /* Memastikan Teks di dalam Card/Metric Streamlit Terlihat Jelas */
     div[data-testid="metric-container"] {
         background-color: #FFFFFF;
         border: 2px solid #E1E8ED;
@@ -75,7 +75,7 @@ st.markdown(
         box-shadow: 0 6px 15px rgba(255, 215, 0, 0.6);
     }
 
-    /* Sidebar Styling & Perbaikan Warna Teks Sidebar agar Jelas (Hitam/Gelap) */
+    /* Sidebar Styling & Warna Teks Gelap agar Jelas */
     section[data-testid="stSidebar"] {
         background-color: #E6F2FF;
         border-right: 1px solid #CCE4FF;
@@ -134,10 +134,10 @@ if menu_pilihan == "📂 Master Data (Upload)":
 
     for file in uploaded_files:
       try:
-        # Membaca file Excel tanpa header dulu untuk pembersihan 4 baris header ERP
+        # Membaca file Excel tanpa header
         df_raw = pd.read_excel(file, header=None)
 
-        # 1. Membersihkan baris header ERP (mencari baris yang mengandung 'Tanggal', 'Gudang', 'Kode')
+        # 1. Membersihkan 4 baris header ERP (mencari baris yang mengandung 'Tanggal', 'Gudang', 'Kode')
         header_row_idx = None
         for idx, row in df_raw.iterrows():
           row_str = str(row.values)
@@ -155,18 +155,10 @@ if menu_pilihan == "📂 Master Data (Upload)":
         else:
           df_clean = df_raw.iloc[4:].copy()
           df_clean.columns = df_raw.iloc[3]
-          df_clean.iloc[1:].copy()
+          df_clean = df_clean.iloc[1:].copy()
 
-        # 2. Hanya membersihkan sel/baris kosong di kolom 'Kode Item' di setiap akhir kelompok data (tanpa menghapus baris transaksi penting)
-        if "Kode Item" in df_clean.columns:
-          # Buang baris di mana Kode Item kosong total DAN bukan bagian dari ringkasan total harga
-          df_clean = df_clean[
-              ~(
-                  df_clean["Kode Item"].isna()
-                  & df_clean["Nama Item"].isna()
-                  & df_clean["Qty"].isna()
-              )
-          ]
+        # 2. HANYA membuang baris kosong mutlak jika seluruh kolom utamanya kosong, TANPA menghapus baris transaksi/summary apa pun
+        df_clean = df_clean.dropna(how="all")
 
         all_dataframes.append(df_clean)
       except Exception as e:
@@ -177,11 +169,12 @@ if menu_pilihan == "📂 Master Data (Upload)":
       st.session_state.raw_master = master_raw_combined
       st.success(
           "✅ File berhasil di-upload dan dibersihkan dari header ERP!"
+          " Seluruh baris transaksi & summary dipertahankan lengkap."
           " Silakan pindah ke menu **Proses & Analisis Data** di sidebar."
       )
 
-      st.markdown("#### Preview Data Mentah Setelah Pembersihan Awal:")
-      st.dataframe(master_raw_combined.head(10), use_container_width=True)
+      st.markdown("#### Preview Data Mentah:")
+      st.dataframe(master_raw_combined.head(15), use_container_width=True)
 
 # --- MENU 2: PROSES & ANALISIS DATA ---
 elif menu_pilihan == "🚀 Proses & Analisis Data":
@@ -195,12 +188,12 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
   else:
     if st.button("🚀 Jalankan Proses & Validasi Data"):
       with st.spinner(
-          "Sedang memproses forward fill, penempatan kolom, dan rumus"
+          "Sedang memproses forward fill, penempatan kolom, dan perhitungan"
           " audit..."
       ):
         master_df = st.session_state.raw_master.copy()
 
-        # 1. Forward Fill kolom identitas agar kelompok transaksi tetap utuh
+        # 1. Forward Fill kolom identitas agar kelompok transaksi tetap terbaca
         fill_cols = [
             "Gudang",
             "Kode",
@@ -212,7 +205,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           if col in master_df.columns:
             master_df[col] = master_df[col].ffill()
 
-        # 2. Standarisasi Qty Target Standar (GR) & posisikan di sebelah kanan kolom Target Unit
+        # 2. QTY Target Standar (GR) tepat di sebelah kanan Target Unit
         if (
             "Target Qty" in master_df.columns
             and "Target Unit" in master_df.columns
@@ -225,7 +218,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               ),
               axis=1,
           )
-          # Mengatur ulang posisi kolom agar QTY Target Standar (GR) tepat di sebelah kanan Target Unit
           cols = list(master_df.columns)
           if (
               "QTY Target Standar (GR)" in cols
@@ -238,7 +230,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
         else:
           master_df["QTY Target Standar (GR)"] = 0
 
-        # 3. Standarisasi Qty Bahan Baku Standar (GR) & posisikan di sebelah kanan kolom Qty
+        # 3. Qty BB Standar (GR) tepat di sebelah kanan Qty
         if "Qty" in master_df.columns and "Unit" in master_df.columns:
           master_df["Qty BB Standar (GR)"] = master_df.apply(
               lambda row: (
@@ -248,7 +240,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               ),
               axis=1,
           )
-          # Mengatur ulang posisi kolom agar Qty BB Standar (GR) tepat di sebelah kanan Qty
           cols = list(master_df.columns)
           if "Qty BB Standar (GR)" in cols and "Qty" in cols:
             cols.remove("Qty BB Standar (GR)")
@@ -258,7 +249,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
         else:
           master_df["Qty BB Standar (GR)"] = 0
 
-        # Pastikan kolom teks tersedia
+        # Pastikan kolom teks aman
         if "Keterangan" not in master_df.columns:
           master_df["Keterangan"] = ""
         if "Keterangan Lain" not in master_df.columns:
@@ -266,7 +257,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
         if "Nama Barang Jadi" not in master_df.columns:
           master_df["Nama Barang Jadi"] = ""
 
-        # Fungsi Algoritma Audit per Baris (menggunakan Kode Item dan Nama Item)
+        # Algoritma Audit (menggunakan Kode Item dan Nama Item)
         cek_jumlah_benang_list = []
         crosscheck_qty_list = []
         selisih_list = []
@@ -395,7 +386,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
         st.session_state.processed_df = master_df
         st.success("✨ Proses validasi selesai dengan sukses!")
 
-    # Tampilkan hasil & tombol download jika sudah diproses
+    # Tampilkan hasil & tombol download
     if st.session_state.processed_df is not None:
       processed_df = st.session_state.processed_df
 
