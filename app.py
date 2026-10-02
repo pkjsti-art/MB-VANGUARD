@@ -102,11 +102,13 @@ menu_pilihan = st.sidebar.radio(
     "Pilih Menu:", ["📂 Master Data (Upload)", "🚀 Proses & Analisis Data"]
 )
 
-# Inisialisasi Session State untuk menyimpan data yang sudah di-upload/diproses
+# Inisialisasi Session State
 if "processed_df" not in st.session_state:
   st.session_state.processed_df = None
+if "raw_master" not in st.session_state:
+  st.session_state.raw_master = None
 
-# --- MENU 1: MASTER DATA (UPLOAD FILE) ---
+# --- MENU 1: MASTER DATA (UPLOAD) ---
 if menu_pilihan == "📂 Master Data (Upload)":
   st.markdown("### 📂 Unggah File Master Export ERP Gudang")
   st.write(
@@ -128,7 +130,7 @@ if menu_pilihan == "📂 Master Data (Upload)":
         # Membaca file Excel tanpa header dulu untuk pembersihan baris sampah ERP
         df_raw = pd.read_excel(file, header=None)
 
-        # 1. Membersihkan 4 baris pertama (judul laporan ERP) dan mencari baris header yang benar (misal kolom 'No' atau 'Tanggal')
+        # 1. Membersihkan baris header ERP (mencari baris yang mengandung 'Tanggal', 'Gudang', 'Kode')
         header_row_idx = None
         for idx, row in df_raw.iterrows():
           row_str = str(row.values)
@@ -141,20 +143,15 @@ if menu_pilihan == "📂 Master Data (Upload)":
             break
 
         if header_row_idx is not None:
-          # Set baris tersebut sebagai header kolom
           df_raw.columns = df_raw.iloc[header_row_idx]
           df_clean = df_raw.iloc[header_row_idx + 1 :].copy()
         else:
-          # Fallback jika format sedikit berbeda, buang 4 baris teratas secara default
           df_clean = df_raw.iloc[4:].copy()
           df_clean.columns = df_raw.iloc[3]
           df_clean = df_clean.iloc[1:].copy()
 
-        # 2. Membersihkan baris kosong total atau baris summary ERP (Total Bahan Baku, Total Pekerjaan, dll.)
-        df_clean = df_clean.dropna(
-            subset=[df_clean.columns[1]]
-        )  cautions/buang baris kosong di kolom tanggal/utama
-        # Hapus baris teks summary seperti 'TOTAL BAHAN BAKU', 'TOTAL HARGA', dll.
+        # 2. Membersihkan baris kosong / baris summary ERP (Total Bahan Baku, Total Pekerjaan, dll.)
+        df_clean = df_clean.dropna(subset=[df_clean.columns[1]])
         if "No" in df_clean.columns:
           df_clean = df_clean[
               ~df_clean["No"].astype(str).str.contains("TOTAL|Overhead", na=False)
@@ -179,7 +176,7 @@ if menu_pilihan == "📂 Master Data (Upload)":
 elif menu_pilihan == "🚀 Proses & Analisis Data":
   st.markdown("### 🚀 Eksekusi Sistem Validasi & Audit MB")
 
-  if "raw_master" not in st.session_state or st.session_state.raw_master is None:
+  if st.session_state.raw_master is None:
     st.warning(
         "⚠️ Belum ada data yang di-upload. Silakan lakukan upload file di menu"
         " **Master Data (Upload)** terlebih dahulu!"
@@ -286,7 +283,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
 
           sub_df = master_df[master_df["Kode"] == kode_trans]
 
-          # Cek Jumlah Benang (TWP, MWP, TBM atau semua untuk softcone)
           if gudang == "PRODUKSI SOFTCONE":
             benang_sub = sub_df[
                 sub_df["Kode Bahan Baku"]
@@ -308,7 +304,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           else:
             cek_jumlah_benang_list.append("Tidak Ada TWP/MWP/TBM")
 
-          # Cek baris utama kelompok transaksi
           first_idx_for_code = master_df[master_df["Kode"] == kode_trans].index[
               0
           ]
@@ -319,7 +314,11 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             continue
 
           target_qty = round(
-              float(pd.to_numeric(row.get("QTY Target Standar (GR)", 0), errors="coerce")),
+              float(
+                  pd.to_numeric(
+                      row.get("QTY Target Standar (GR)", 0), errors="coerce"
+                  )
+              ),
               0,
           )
 
@@ -368,7 +367,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
         st.session_state.processed_df = master_df
         st.success("✨ Proses validasi selesai dengan sukses!")
 
-    # Jika data sudah diproses, tampilkan hasil dan tombol download di atas
+    # Tampilkan hasil & tombol download jika sudah diproses
     if st.session_state.processed_df is not None:
       processed_df = st.session_state.processed_df
 
@@ -393,7 +392,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             ),
         )
 
-      # Metrik Ringkasan Status
       valid_status = processed_df["Crosscheck Qty"].replace("", pd.NA).dropna()
       total_trx = len(valid_status)
       correct_count = (valid_status == "CORRECT").sum()
@@ -412,7 +410,9 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
       with m3:
         st.metric(label="Status: INCORRECT", value=f"{incorrect_normal:,}")
       with m4:
-        st.metric(label="Status: Selisih Wajar", value=f"{incorrect_wajar:,}")
+        st.metric(
+            label="Status: Selisih Wajar", value=f"{incorrect_wajar:,}"
+        )
 
       st.markdown("---")
 
