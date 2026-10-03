@@ -184,7 +184,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
       with st.spinner("Sedang mengeksekusi rumus dan logika audit akurat..."):
         master_df = st.session_state.raw_master.copy()
 
-        # Bersihkan nama kolom dari spasi ekstra dan buat unik (atasi duplikasi kolom Excel)
+        # Bersihkan nama kolom dari spasi ekstra dan buat unik
         new_cols = []
         seen_cols = {}
         for i, c in enumerate(master_df.columns):
@@ -220,7 +220,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           elif k in ["UNIT", "SATUAN"]:
             col_unit = v
 
-        # Fallback pencarian fleksibel tambahan jika belum ketemu
+        # Fallback pencarian fleksibel tambahan
         if not col_kode_item:
           for k, v in col_mapping_std.items():
             if "KODE" in k:
@@ -247,14 +247,13 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               col_unit = v
               break
 
-        # Tampilkan informasi kolom yang terdeteksi untuk transparansi
         st.info(
             f"ℹ **Deteksi Kolom Otomatis:** Kode Item=`{col_kode_item}` | Target"
             f" Qty=`{col_target_qty}` | Target Unit=`{col_target_unit}` |"
             f" Qty=`{col_qty}` | Unit=`{col_unit}`"
         )
 
-        # 1. Forward Fill HANYA untuk kolom: Gudang, Kode, Kode Barang Jadi, Nama Barang Jadi
+        # 1. Forward Fill HANYA untuk kolom tertentu
         target_fill_names = [
             "Gudang",
             "Kode",
@@ -276,7 +275,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             master_df[col] = master_df.groupby("Kode")[col].ffill()
             master_df[col] = master_df[col].ffill()
 
-        # Fungsi konversi angka aman (mengatasi format string/desimal)
+        # Fungsi konversi angka aman
         def parse_numeric(val):
           if pd.isna(val) or str(val).strip() == "":
             return None
@@ -310,15 +309,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               else "",
               axis=1,
           )
-          cols = list(master_df.columns)
-          if (
-              "QTY Target Standar (GR)" in cols
-              and col_target_unit in cols
-          ):
-            cols.remove("QTY Target Standar (GR)")
-            tu_idx = cols.index(col_target_unit)
-            cols.insert(tu_idx + 1, "QTY Target Standar (GR)")
-            master_df = master_df[cols]
         else:
           master_df["QTY Target Standar (GR)"] = ""
 
@@ -338,13 +328,13 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               else "",
               axis=1,
           )
-          cols = list(master_df.columns)
-          if "Qty BB Standar (GR)" in cols and col_qty in cols:
-            cols.remove("Qty BB Standar (GR)")
-            q_idx = cols.index(col_qty)
-            cols.insert(q_idx + 1, "Qty BB Standar (GR)")
-            master_df = master_df[cols]
         else:
+          master_df["Qty BB Standar (GR)"] = ""
+
+        # SAFETY CHECK: Pastikan kolom wajib selalu ada di DataFrame
+        if "QTY Target Standar (GR)" not in master_df.columns:
+          master_df["QTY Target Standar (GR)"] = ""
+        if "Qty BB Standar (GR)" not in master_df.columns:
           master_df["Qty BB Standar (GR)"] = ""
 
         for c_name in [
