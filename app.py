@@ -127,8 +127,15 @@ if menu_pilihan == "📂 Master Data (Upload)":
       try:
         df_raw = pd.read_excel(file, header=None)
 
+        # Hapus 4 baris paling atas dan 4 baris paling bawah jika baris cukup
+        if len(df_raw) > 8:
+          df_trimmed = df_raw.iloc[4:-4].copy()
+        else:
+          df_trimmed = df_raw.copy()
+
+        # Deteksi baris header di dalam data yang sudah dipangkas
         header_row_idx = None
-        for idx, row in df_raw.iterrows():
+        for idx, row in df_trimmed.iterrows():
           row_str = str(row.values)
           if (
               "Tanggal" in row_str
@@ -139,13 +146,13 @@ if menu_pilihan == "📂 Master Data (Upload)":
             break
 
         if header_row_idx is not None:
-          df_raw.columns = df_raw.iloc[header_row_idx]
-          df_clean = df_raw.iloc[header_row_idx + 1 :].copy()
+          df_trimmed.columns = df_trimmed.loc[header_row_idx]
+          df_clean = df_trimmed.loc[header_row_idx + 1 :].copy()
         else:
-          df_clean = df_raw.iloc[4:].copy()
-          df_clean.columns = df_raw.iloc[3]
-          df_clean = df_clean.iloc[1:].copy()
+          df_clean = df_trimmed.iloc[1:].copy()
+          df_clean.columns = df_trimmed.iloc[0].values
 
+        # Hapus baris kosong (blank rows) antar transaksi
         df_clean = df_clean.dropna(how="all")
         all_dataframes.append(df_clean)
       except Exception as e:
@@ -155,9 +162,9 @@ if menu_pilihan == "📂 Master Data (Upload)":
       master_raw_combined = pd.concat(all_dataframes, ignore_index=True)
       st.session_state.raw_master = master_raw_combined
       st.success(
-          "✅ File berhasil di-upload dan dibersihkan! Seluruh baris transaksi"
-          " dipertahankan lengkap. Silakan pindah ke menu **Proses & Analisis"
-          " Data** di sidebar."
+          "✅ File berhasil di-upload, 4 baris atas, 4 baris bawah, serta baris"
+          " kosong berhasil dibersihkan! Silakan pindah ke menu **Proses &"
+          " Analisis Data** di sidebar."
       )
 
       st.markdown("#### Preview Data Mentah:")
@@ -242,7 +249,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
 
         # Tampilkan informasi kolom yang terdeteksi untuk transparansi
         st.info(
-            f"ℹ️️ **Deteksi Kolom Otomatis:** Kode Item=`{col_kode_item}` | Target"
+            f"ℹ **Deteksi Kolom Otomatis:** Kode Item=`{col_kode_item}` | Target"
             f" Qty=`{col_target_qty}` | Target Unit=`{col_target_unit}` |"
             f" Qty=`{col_qty}` | Unit=`{col_unit}`"
         )
@@ -288,7 +295,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           except:
             return pd.to_numeric(str(val), errors="coerce")
 
-        # 2. QTY Target Standar (GR) (Tidak di-ffill, hanya muncul di baris pertama transaksi)
+        # 2. QTY Target Standar (GR)
         if col_target_qty and col_target_unit:
           master_df["QTY Target Standar (GR)"] = master_df.apply(
               lambda row: (
@@ -303,7 +310,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               else "",
               axis=1,
           )
-          # Posisikan kolom di sebelah Target Unit
           cols = list(master_df.columns)
           if (
               "QTY Target Standar (GR)" in cols
@@ -332,7 +338,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               else "",
               axis=1,
           )
-          # Posisikan kolom di sebelah Qty asli
           cols = list(master_df.columns)
           if "Qty BB Standar (GR)" in cols and col_qty in cols:
             cols.remove("Qty BB Standar (GR)")
@@ -342,7 +347,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
         else:
           master_df["Qty BB Standar (GR)"] = ""
 
-        # Pastikan kolom teks pendukung aman dan diinisialisasi
         for c_name in [
             "Keterangan",
             "Keterangan Lain",
