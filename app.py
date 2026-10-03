@@ -13,14 +13,11 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    /* Global Styling - Blue Sky & Putih */
     .stApp {
         background-color: #F0F8FF;
         color: #111111;
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
-    
-    /* Header Utama */
     .main-header {
         background: linear-gradient(135deg, #00B4DB 0%, #0083B0 100%);
         padding: 20px;
@@ -40,8 +37,6 @@ st.markdown(
         font-size: 1rem;
         opacity: 0.9;
     }
-
-    /* Memastikan Teks di dalam Card/Metric Streamlit Terlihat Jelas */
     div[data-testid="metric-container"] {
         background-color: #FFFFFF;
         border: 2px solid #E1E8ED;
@@ -57,8 +52,6 @@ st.markdown(
         color: #0083B0 !important;
         font-weight: 700 !important;
     }
-
-    /* Tombol Kustom dengan Aksen Kuning Futuristik */
     div.stButton > button {
         background-color: #FFD700;
         color: #111111;
@@ -74,8 +67,6 @@ st.markdown(
         transform: translateY(-2px);
         box-shadow: 0 6px 15px rgba(255, 215, 0, 0.6);
     }
-
-    /* Sidebar Styling & Warna Teks Gelap agar Jelas */
     section[data-testid="stSidebar"] {
         background-color: #E6F2FF;
         border-right: 1px solid #CCE4FF;
@@ -183,10 +174,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
     )
   else:
     if st.button("🚀 Jalankan Proses & Validasi Data"):
-      with st.spinner(
-          "Sedang memproses forward fill, penempatan kolom, dan perhitungan"
-          " audit..."
-      ):
+      with st.spinner("Sedang mengeksekusi rumus dan logika audit akurat..."):
         master_df = st.session_state.raw_master.copy()
 
         # 1. Forward Fill kolom identitas agar kelompok transaksi tetap terbaca utuh
@@ -202,7 +190,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           if col in master_df.columns:
             master_df[col] = master_df[col].ffill()
 
-        # 2. QTY Target Standar (GR) tepat di sebelah kanan Target Unit & Forward Fill ke bawah dalam satu kelompok MB
+        # 2. QTY Target Standar (GR) - Sesuai Rumus Excel (hanya baris target di baris atas transaksi)
         if (
             "Target Qty" in master_df.columns
             and "Target Unit" in master_df.columns
@@ -212,15 +200,12 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
                   pd.to_numeric(row["Target Qty"], errors="coerce") * 1000
                   if str(row["Target Unit"]).strip().upper() == "KG"
                   else pd.to_numeric(row["Target Qty"], errors="coerce")
-              ),
+              )
+              if pd.notna(row.get("Target Qty"))
+              and str(row.get("Target Qty")).strip() != ""
+              else "",
               axis=1,
           )
-          # Forward fill agar baris bahan baku di bawahnya ikut terisi nilai target standar
-          if "Kode" in master_df.columns:
-            master_df["QTY Target Standar (GR)"] = master_df.groupby("Kode")[
-                "QTY Target Standar (GR)"
-            ].ffill()
-
           cols = list(master_df.columns)
           if (
               "QTY Target Standar (GR)" in cols
@@ -231,16 +216,23 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             cols.insert(target_unit_idx + 1, "QTY Target Standar (GR)")
             master_df = master_df[cols]
         else:
-          master_df["QTY Target Standar (GR)"] = 0
+          master_df["QTY Target Standar (GR)"] = ""
 
-        # 3. Qty BB Standar (GR) tepat di sebelah kanan Qty
+        # 3. Qty BB Standar (GR) - Sesuai Rumus Excel
         if "Qty" in master_df.columns and "Unit" in master_df.columns:
           master_df["Qty BB Standar (GR)"] = master_df.apply(
               lambda row: (
                   pd.to_numeric(row["Qty"], errors="coerce") * 1000
                   if str(row["Unit"]).strip().upper() == "KG"
                   else pd.to_numeric(row["Qty"], errors="coerce")
-              ),
+              )
+              if pd.notna(row.get("Kode Item"))
+              and str(row.get("Kode Item")).strip() != ""
+              and "TOTAL" not in str(row.get("Kode Item")).upper()
+              and str(row.get("Kode Item")).strip() != "Overhead Cost"
+              and pd.notna(row.get("Qty"))
+              and str(row.get("Qty")).strip() != ""
+              else "",
               axis=1,
           )
           cols = list(master_df.columns)
@@ -250,17 +242,19 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             cols.insert(qty_idx + 1, "Qty BB Standar (GR)")
             master_df = master_df[cols]
         else:
-          master_df["Qty BB Standar (GR)"] = 0
+          master_df["Qty BB Standar (GR)"] = ""
 
         # Pastikan kolom teks aman
-        if "Keterangan" not in master_df.columns:
-          master_df["Keterangan"] = ""
-        if "Keterangan Lain" not in master_df.columns:
-          master_df["Keterangan Lain"] = ""
-        if "Nama Barang Jadi" not in master_df.columns:
-          master_df["Nama Barang Jadi"] = ""
+        for col_name in [
+            "Keterangan",
+            "Keterangan Lain",
+            "Nama Barang Jadi",
+            "Kode Item",
+        ]:
+          if col_name not in master_df.columns:
+            master_df[col_name] = ""
 
-        # 4. Algoritma Audit & Cek Jumlah Benang (Auto-fill per Kelompok Kode MB)
+        # 4. Pemetaan Cek Benang, Crosscheck Qty, dan Selisih per Kelompok Transaksi
         cek_jumlah_benang_list = []
         crosscheck_qty_list = []
         selisih_list = []
@@ -275,48 +269,54 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             "REEBOK",
             "ROLL",
         ]
-
-        # Pre-calculate mapping untuk Cek Jumlah Benang per Kode MB
-        kode_benang_mapping = {}
         unique_kodes = master_df["Kode"].dropna().unique()
 
+        kode_benang_mapping = {}
         for kode_trans in unique_kodes:
           sub_df = master_df[master_df["Kode"] == kode_trans]
-          gudang_val = str(sub_df.iloc[0].get("Gudang", ""))
+          if sub_df.empty:
+            continue
+          gudang_val = str(sub_df.iloc[0].get("Gudang", "")).strip()
 
           if gudang_val == "Gudang dyeing STI":
+            item_list = sub_df["Kode Item"].dropna().astype(str).tolist()
+            if not item_list:
+              kode_benang_mapping[kode_trans] = "BUKAN BENANG"
+            else:
+              all_tbb = all(item.startswith("TBB") for item in item_list)
+              if all_tbb:
+                kode_benang_mapping[kode_trans] = "BUKAN BENANG"
+              else:
+                kode_benang_mapping[kode_trans] = "BUKAN CND"
+          elif gudang_val in ["Gudang mesin dyeing", "GUDANG LAB & RnD"]:
             benang_sub = sub_df[
                 sub_df["Kode Item"]
                 .astype(str)
                 .str.startswith(("TWP", "MWP", "TBM"), na=False)
             ]
             if not benang_sub.empty:
-              unique_benang = ", ".join(
-                  benang_sub["Kode Item"].astype(str).unique()
-              )
-              kode_benang_mapping[kode_trans] = unique_benang
+              unique_b = ", ".join(benang_sub["Kode Item"].astype(str).unique())
+              kode_benang_mapping[kode_trans] = unique_b
             else:
-              kode_benang_mapping[kode_trans] = "TIDAK ADA BENANG"
-          else:
+              kode_benang_mapping[kode_trans] = "Tidak Ada TWP/MWP/TBM"
+          elif gudang_val == "PRODUKSI SOFTCONE":
             benang_sub = sub_df[
                 sub_df["Kode Item"]
                 .astype(str)
                 .str.startswith(("TBB", "MBB", "MWP", "TWP", "TBM"), na=False)
             ]
             if not benang_sub.empty:
-              unique_benang = ", ".join(
-                  benang_sub["Kode Item"].astype(str).unique()
-              )
-              kode_benang_mapping[kode_trans] = unique_benang
+              unique_b = ", ".join(benang_sub["Kode Item"].astype(str).unique())
+              kode_benang_mapping[kode_trans] = unique_b
             else:
               kode_benang_mapping[kode_trans] = "Tidak Ada TWP/MWP/TBM"
+          else:
+            kode_benang_mapping[kode_trans] = ""
 
         for idx, row in master_df.iterrows():
           kode_trans = str(row.get("Kode", ""))
-          gudang = str(row.get("Gudang", ""))
-          kode_item = str(row.get("Kode Item", ""))
+          gudang = str(row.get("Gudang", "")).strip()
 
-          # Jika baris kosong / baris total tanpa kode transaksi
           if not kode_trans or kode_trans == "nan":
             cek_jumlah_benang_list.append("")
             crosscheck_qty_list.append("")
@@ -324,71 +324,61 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             satuan_selisih_list.append("")
             continue
 
-          # Auto-fill Cek Jumlah Benang ke semua baris dalam kelompok kode MB yang sama
+          # Auto-fill Cek Jumlah Benang ke semua baris dalam kelompok kode transaksi yang sama
           cek_jumlah_benang_list.append(kode_benang_mapping.get(kode_trans, ""))
 
-          # Khusus Gudang dyeing STI: Tidak ada proses crosscheck dan selisih (dikosongkan)
+          # Gudang dyeing STI tidak ada crosscheck & selisih
           if gudang == "Gudang dyeing STI":
             crosscheck_qty_list.append("")
             selisih_list.append("")
             satuan_selisih_list.append("")
             continue
 
-          # Crosscheck hanya dieksekusi di baris pertama dari kelompok kode transaksi
-          first_idx_for_code = master_df[master_df["Kode"] == kode_trans].index[
-              0
-          ]
-          if idx != first_idx_for_code:
+          # Crosscheck & Selisih hanya di baris pertama kelompok kode transaksi
+          first_idx = master_df[master_df["Kode"] == kode_trans].index[0]
+          if idx != first_idx:
             crosscheck_qty_list.append("")
             selisih_list.append("")
             satuan_selisih_list.append("")
             continue
 
+          target_val = row.get("QTY Target Standar (GR)", "")
+          if (
+              target_val == ""
+              or pd.isna(target_val)
+              or not isinstance(target_val, (int, float))
+          ):
+            crosscheck_qty_list.append("")
+            selisih_list.append("")
+            satuan_selisih_list.append("")
+            continue
+
+          target_qty = round(float(target_val), 0)
           sub_df = master_df[master_df["Kode"] == kode_trans]
+
           if gudang == "PRODUKSI SOFTCONE":
             benang_sub = sub_df[
                 sub_df["Kode Item"]
                 .astype(str)
-                .str.startswith(("TBB", "MBB", "MWP", "TWP", "TBM"), na=False)
+                .str.startswith(("TBB", "MBB", "TWP", "MWP", "TBM"), na=False)
             ]
-          else:
+          elif gudang in ["Gudang mesin dyeing", "GUDANG LAB & RnD"]:
             benang_sub = sub_df[
                 sub_df["Kode Item"]
                 .astype(str)
                 .str.startswith(("TWP", "MWP", "TBM"), na=False)
             ]
-
-          target_qty = round(
-              float(
-                  pd.to_numeric(
-                      row.get("QTY Target Standar (GR)", 0), errors="coerce"
-                  )
-              ),
-              0,
-          )
-
-          if gudang == "PRODUKSI SOFTCONE":
-            total_bb = round(
-                benang_sub[
-                    benang_sub["Kode Item"]
-                    .astype(str)
-                    .str.startswith(("TBB", "MBB", "TWP", "TBM", "MWP"), na=False)
-                ]["Qty BB Standar (GR)"].sum(),
-                0,
-            )
-          elif gudang in ["Gudang mesin dyeing", "GUDANG LAB & RnD"]:
-            total_bb = round(
-                benang_sub[
-                    benang_sub["Kode Item"]
-                    .astype(str)
-                    .str.startswith(("TWP", "MWP", "TBM"), na=False)
-                ]["Qty BB Standar (GR)"].sum(),
-                0,
-            )
           else:
-            total_bb = 0
+            benang_sub = pd.DataFrame()
+
+          valid_qtys = pd.to_numeric(
+              benang_sub["Qty BB Standar (GR)"], errors="coerce"
+          ).dropna()
+          total_bb = round(valid_qtys.sum(), 0)
 
           selisih_val = target_qty - total_bb
+
+          # Pengecekan Keyword Case-Insensitive untuk Selisih Wajar
           nama_brg_jdi = str(row.get("Nama Barang Jadi", ""))
           ket = str(row.get("Keterangan", ""))
           ket_lain = str(row.get("Keterangan Lain", ""))
@@ -413,7 +403,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
         master_df["Satuan Selisih"] = satuan_selisih_list
 
         st.session_state.processed_df = master_df
-        st.success("✨ Proses validasi selesai dengan sukses!")
+        st.success("✨ Proses validasi berhasil dijalankan!")
 
     # Tampilkan hasil & tombol download
     if st.session_state.processed_df is not None:
@@ -440,13 +430,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             ),
         )
 
-      valid_status = (
-          processed_df["Crosscheck Qty"]
-          .replace("", pd.NA)
-          .dropna()
-          .replace("TIDAK ADA BENANG", pd.NA)
-          .dropna()
-      )
       total_trx = len(processed_df["Kode"].dropna().unique())
       correct_count = (processed_df["Crosscheck Qty"] == "CORRECT").sum()
       incorrect_normal = (processed_df["Crosscheck Qty"] == "INCORRECT").sum()
@@ -457,7 +440,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
       m1, m2, m3, m4 = st.columns(4)
       with m1:
         st.metric(
-            label="Total Kelompok Transaksi", value=f"{total_trx:,} Baris"
+            label="Total Kelompok Transaksi", value=f"{total_trx:,} Transaksi"
         )
       with m2:
         st.metric(label="Status: CORRECT", value=f"{correct_count:,}")
