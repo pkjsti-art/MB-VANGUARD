@@ -243,16 +243,10 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             f" Qty=`{col_qty}` | Unit=`{col_unit}`"
         )
 
-        # 1. Forward Fill HANYA untuk kolom: Gudang, Kode, Kode Barang Jadi, Nama Barang Jadi
-        target_ffill_cols = [
-            "Gudang",
-            "Kode",
-            "Kode Barang Jadi",
-            "Nama Barang Jadi",
-        ]
+        # 1. Forward Fill HANYA untuk 3 kolom: Kode, Kode Barang Jadi, Nama Barang Jadi (Gudang TIDAK di-ffill)
+        target_ffill_cols = ["Kode", "Kode Barang Jadi", "Nama Barang Jadi"]
         for col in target_ffill_cols:
           if col in master_df.columns:
-            # Jika kolom Kode ada, lakukan ffill berdasarkan kelompok Kode agar lebih rapi
             if "Kode" in master_df.columns and col != "Kode":
               master_df[col] = master_df.groupby("Kode")[col].ffill()
             master_df[col] = master_df[col].ffill()
@@ -356,11 +350,24 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
         unique_kodes = master_df["Kode"].dropna().unique()
 
         kode_benang_mapping = {}
+        kode_gudang_mapping = {}
+
+        # Petakan gudang asli per kelompok kode (ambil dari baris pertama yang memiliki nilai Gudang)
         for kode_trans in unique_kodes:
           sub_df = master_df[master_df["Kode"] == kode_trans]
           if sub_df.empty:
             continue
-          gudang_val = str(sub_df.iloc[0].get("Gudang", "")).strip()
+          # Cari baris yang punya nilai gudang valid di kelompok tersebut
+          valid_gudang_rows = sub_df[
+              sub_df["Gudang"].notna()
+              & (sub_df["Gudang"].astype(str).str.strip() != "")
+              & (sub_df["Gudang"].astype(str).str.lower() != "nan")
+          ]
+          if not valid_gudang_rows.empty:
+            gudang_val = str(valid_gudang_rows.iloc[0]["Gudang"]).strip()
+          else:
+            gudang_val = ""
+          kode_gudang_mapping[kode_trans] = gudang_val
 
           if gudang_val == "Gudang dyeing STI":
             item_list = (
@@ -413,7 +420,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
 
         for idx, row in master_df.iterrows():
           kode_trans = str(row.get("Kode", ""))
-          gudang = str(row.get("Gudang", "")).strip()
+          gudang = kode_gudang_mapping.get(kode_trans, "").strip()
 
           if not kode_trans or kode_trans == "nan":
             cek_jumlah_benang_list.append("")
@@ -422,16 +429,22 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             satuan_selisih_list.append("")
             continue
 
-          cek_jumlah_benang_list.append(kode_benang_mapping.get(kode_trans, ""))
+          # Cek jumlah benang hanya di baris pertama kelompok transaksi agar rapi
+          first_idx = master_df[master_df["Kode"] == kode_trans].index[0]
+          if idx == first_idx:
+            cek_jumlah_benang_list.append(
+                kode_benang_mapping.get(kode_trans, "")
+            )
+          else:
+            cek_jumlah_benang_list.append("")
 
-          # ATURAN BARU: Jika Gudang Dyeing STI, kosongkan crosscheck, selisih, dan satuan selisih
+          # Jika Gudang Dyeing STI, kosongkan crosscheck, selisih, dan satuan selisih total
           if gudang == "Gudang dyeing STI":
             crosscheck_qty_list.append("")
             selisih_list.append("")
             satuan_selisih_list.append("")
             continue
 
-          first_idx = master_df[master_df["Kode"] == kode_trans].index[0]
           if idx != first_idx:
             crosscheck_qty_list.append("")
             selisih_list.append("")
