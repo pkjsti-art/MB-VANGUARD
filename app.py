@@ -243,26 +243,18 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             f" Qty=`{col_qty}` | Unit=`{col_unit}`"
         )
 
-        # 1. Forward Fill kolom Kode dan Identitas agar transaksi utuh
-        if "Kode" in master_df.columns:
-          master_df["Kode"] = master_df["Kode"].ffill()
-
-        fill_cols = [
+        # 1. Forward Fill HANYA untuk kolom: Gudang, Kode, Kode Barang Jadi, Nama Barang Jadi
+        target_ffill_cols = [
             "Gudang",
             "Kode",
-            "Status",
-            "Kode BOM",
             "Kode Barang Jadi",
             "Nama Barang Jadi",
         ]
-        if col_target_qty and col_target_qty in master_df.columns:
-          fill_cols.append(col_target_qty)
-        if col_target_unit and col_target_unit in master_df.columns:
-          fill_cols.append(col_target_unit)
-
-        for col in fill_cols:
+        for col in target_ffill_cols:
           if col in master_df.columns:
-            master_df[col] = master_df.groupby("Kode")[col].ffill()
+            # Jika kolom Kode ada, lakukan ffill berdasarkan kelompok Kode agar lebih rapi
+            if "Kode" in master_df.columns and col != "Kode":
+              master_df[col] = master_df.groupby("Kode")[col].ffill()
             master_df[col] = master_df[col].ffill()
 
         # Fungsi konversi angka aman
@@ -432,6 +424,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
 
           cek_jumlah_benang_list.append(kode_benang_mapping.get(kode_trans, ""))
 
+          # ATURAN BARU: Jika Gudang Dyeing STI, kosongkan crosscheck, selisih, dan satuan selisih
           if gudang == "Gudang dyeing STI":
             crosscheck_qty_list.append("")
             selisih_list.append("")
@@ -484,7 +477,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           else:
             benang_sub = pd.DataFrame()
 
-          # AMAN DARI KEYERROR: Memastikan kolom ada di subset sebelum dihitung
           if (
               not benang_sub.empty
               and "Qty BB Standar (GR)" in benang_sub.columns
