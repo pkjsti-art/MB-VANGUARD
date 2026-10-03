@@ -127,13 +127,13 @@ if menu_pilihan == "📂 Master Data (Upload)":
       try:
         df_raw = pd.read_excel(file, header=None)
 
-        # Hapus 4 baris paling atas dan 4 baris paling bawah jika baris cukup
+        # 1. Hapus 4 baris paling atas dan 4 baris paling bawah dari file mentah
         if len(df_raw) > 8:
           df_trimmed = df_raw.iloc[4:-4].copy()
         else:
           df_trimmed = df_raw.copy()
 
-        # Deteksi baris header di dalam data yang sudah dipangkas
+        # 2. Deteksi baris header di dalam data yang sudah dipangkas
         header_row_idx = None
         for idx, row in df_trimmed.iterrows():
           row_str = str(row.values)
@@ -152,7 +152,7 @@ if menu_pilihan == "📂 Master Data (Upload)":
           df_clean = df_trimmed.iloc[1:].copy()
           df_clean.columns = df_trimmed.iloc[0].values
 
-        # Hapus baris kosong (blank rows) antar transaksi
+        # 3. Hapus baris kosong di antara data/transaksi
         df_clean = df_clean.dropna(how="all")
         all_dataframes.append(df_clean)
       except Exception as e:
@@ -162,8 +162,8 @@ if menu_pilihan == "📂 Master Data (Upload)":
       master_raw_combined = pd.concat(all_dataframes, ignore_index=True)
       st.session_state.raw_master = master_raw_combined
       st.success(
-          "✅ File berhasil di-upload, 4 baris atas, 4 baris bawah, serta baris"
-          " kosong berhasil dibersihkan! Silakan pindah ke menu **Proses &"
+          "✅ File berhasil di-upload! 4 baris atas, 4 baris bawah, serta baris"
+          " kosong berhasil dibersihkan. Silakan pindah ke menu **Proses &"
           " Analisis Data** di sidebar."
       )
 
@@ -184,18 +184,11 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
       with st.spinner("Sedang mengeksekusi rumus dan logika audit akurat..."):
         master_df = st.session_state.raw_master.copy()
 
-        # Bersihkan nama kolom dari spasi ekstra dan buat unik
-        new_cols = []
-        seen_cols = {}
-        for i, c in enumerate(master_df.columns):
-          col_name = str(c).strip() if pd.notna(c) else f"Unnamed_{i}"
-          if col_name in seen_cols:
-            seen_cols[col_name] += 1
-            col_name = f"{col_name}_{seen_cols[col_name]}"
-          else:
-            seen_cols[col_name] = 0
-          new_cols.append(col_name)
-        master_df.columns = new_cols
+        # Bersihkan nama kolom dari spasi ekstra
+        master_df.columns = [
+            str(c).strip() if pd.notna(c) else f"Unnamed_{i}"
+            for i, c in enumerate(master_df.columns)
+        ]
 
         # Pemetaan Kolom Fleksibel (Keyword Matching)
         col_mapping_std = {}
@@ -220,7 +213,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           elif k in ["UNIT", "SATUAN"]:
             col_unit = v
 
-        # Fallback pencarian fleksibel tambahan
+        # Fallback pencarian fleksibel tambahan jika belum ketemu
         if not col_kode_item:
           for k, v in col_mapping_std.items():
             if "KODE" in k:
@@ -247,35 +240,36 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               col_unit = v
               break
 
+        # Tampilkan informasi kolom yang terdeteksi untuk transparansi
         st.info(
-            f"ℹ **Deteksi Kolom Otomatis:** Kode Item=`{col_kode_item}` | Target"
+            f"ℹ️️ **Deteksi Kolom Otomatis:** Kode Item=`{col_kode_item}` | Target"
             f" Qty=`{col_target_qty}` | Target Unit=`{col_target_unit}` |"
             f" Qty=`{col_qty}` | Unit=`{col_unit}`"
         )
 
-        # 1. Forward Fill HANYA untuk kolom tertentu
-        target_fill_names = [
-            "Gudang",
-            "Kode",
-            "Kode Barang Jadi",
-            "Nama Barang Jadi",
-        ]
-        actual_fill_cols = []
-        for target_name in target_fill_names:
-          for c in master_df.columns:
-            if str(c).strip().upper() == target_name.upper():
-              actual_fill_cols.append(c)
-              break
-
+        # 1. Forward Fill kolom Kode dan Identitas agar transaksi utuh
         if "Kode" in master_df.columns:
           master_df["Kode"] = master_df["Kode"].ffill()
 
-        for col in actual_fill_cols:
+        fill_cols = [
+            "Gudang",
+            "Kode",
+            "Status",
+            "Kode BOM",
+            "Kode Barang Jadi",
+            "Nama Barang Jadi",
+        ]
+        if col_target_qty and col_target_qty in master_df.columns:
+          fill_cols.append(col_target_qty)
+        if col_target_unit and col_target_unit in master_df.columns:
+          fill_cols.append(col_target_unit)
+
+        for col in fill_cols:
           if col in master_df.columns:
             master_df[col] = master_df.groupby("Kode")[col].ffill()
             master_df[col] = master_df[col].ffill()
 
-        # Fungsi konversi angka aman
+        # Fungsi konversi angka aman (mengatasi format string/desimal)
         def parse_numeric(val):
           if pd.isna(val) or str(val).strip() == "":
             return None
@@ -309,6 +303,16 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               else "",
               axis=1,
           )
+          # Posisikan kolom di sebelah Target Unit
+          cols = list(master_df.columns)
+          if (
+              "QTY Target Standar (GR)" in cols
+              and col_target_unit in cols
+          ):
+            cols.remove("QTY Target Standar (GR)")
+            tu_idx = cols.index(col_target_unit)
+            cols.insert(tu_idx + 1, "QTY Target Standar (GR)")
+            master_df = master_df[cols]
         else:
           master_df["QTY Target Standar (GR)"] = ""
 
@@ -328,15 +332,17 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               else "",
               axis=1,
           )
+          # Posisikan kolom di sebelah Qty asli
+          cols = list(master_df.columns)
+          if "Qty BB Standar (GR)" in cols and col_qty in cols:
+            cols.remove("Qty BB Standar (GR)")
+            q_idx = cols.index(col_qty)
+            cols.insert(q_idx + 1, "Qty BB Standar (GR)")
+            master_df = master_df[cols]
         else:
           master_df["Qty BB Standar (GR)"] = ""
 
-        # SAFETY CHECK: Pastikan kolom wajib selalu ada di DataFrame
-        if "QTY Target Standar (GR)" not in master_df.columns:
-          master_df["QTY Target Standar (GR)"] = ""
-        if "Qty BB Standar (GR)" not in master_df.columns:
-          master_df["Qty BB Standar (GR)"] = ""
-
+        # Pastikan kolom teks pendukung aman
         for c_name in [
             "Keterangan",
             "Keterangan Lain",
