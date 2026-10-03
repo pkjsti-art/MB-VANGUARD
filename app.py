@@ -177,11 +177,18 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
       with st.spinner("Sedang mengeksekusi rumus dan logika audit akurat..."):
         master_df = st.session_state.raw_master.copy()
 
-        # Bersihkan nama kolom dari spasi ekstra
-        master_df.columns = [
-            str(c).strip() if pd.notna(c) else f"Unnamed_{i}"
-            for i, c in enumerate(master_df.columns)
-        ]
+        # Bersihkan nama kolom dari spasi ekstra dan buat unik (atasi duplikasi kolom Excel)
+        new_cols = []
+        seen_cols = {}
+        for i, c in enumerate(master_df.columns):
+          col_name = str(c).strip() if pd.notna(c) else f"Unnamed_{i}"
+          if col_name in seen_cols:
+            seen_cols[col_name] += 1
+            col_name = f"{col_name}_{seen_cols[col_name]}"
+          else:
+            seen_cols[col_name] = 0
+          new_cols.append(col_name)
+        master_df.columns = new_cols
 
         # Pemetaan Kolom Fleksibel (Keyword Matching)
         col_mapping_std = {}
@@ -235,7 +242,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
 
         # Tampilkan informasi kolom yang terdeteksi untuk transparansi
         st.info(
-            f"ℹ️ **Deteksi Kolom Otomatis:** Kode Item=`{col_kode_item}` | Target"
+            f"ℹ️️ **Deteksi Kolom Otomatis:** Kode Item=`{col_kode_item}` | Target"
             f" Qty=`{col_target_qty}` | Target Unit=`{col_target_unit}` |"
             f" Qty=`{col_qty}` | Unit=`{col_unit}`"
         )
@@ -335,7 +342,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
         else:
           master_df["Qty BB Standar (GR)"] = ""
 
-        # Pastikan kolom teks pendukung aman
+        # Pastikan kolom teks pendukung aman dan diinisialisasi
         for c_name in [
             "Keterangan",
             "Keterangan Lain",
