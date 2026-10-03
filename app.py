@@ -9,7 +9,7 @@ st.set_page_config(
     layout="wide",
 )
 
-# Custom Styling CSS (Kontras teks hitam pada sidebar & card putih)
+# Custom Styling CSS
 st.markdown(
     """
     <style>
@@ -177,18 +177,40 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
       with st.spinner("Sedang mengeksekusi rumus dan logika audit akurat..."):
         master_df = st.session_state.raw_master.copy()
 
-        # Deteksi kolom Kode Item dan Nama Item secara aman dari format ERP baru
-        col_kode_item = (
-            "Kode Item"
-            if "Kode Item" in master_df.columns
-            else ("Kode Bahan Baku" if "Kode Bahan Baku" in master_df.columns else None)
-        )
-        col_nama_item = (
-            "Nama Item"
-            if "Nama Item" in master_df.columns
-            else ("Nama Bahan Baku" if "Nama Bahan Baku" in master_df.columns else None)
-        )
+        # Bersihkan spasi di nama kolom
+        master_df.columns = [
+            str(c).strip() if pd.notna(c) else f"Unnamed_{i}"
+            for i, c in enumerate(master_df.columns)
+        ]
 
+        # Deteksi Kolom secara Fleksibel (Mencegah kolom tidak terbaca)
+        col_kode_item = None
+        col_nama_item = None
+        col_target_qty = None
+        col_target_unit = None
+        col_qty = None
+        col_unit = None
+
+        for c in master_df.columns:
+          c_up = c.upper()
+          if "KODE" in c_up and ("ITEM" in c_up or "BAHAN" in c_up):
+            col_kode_item = c
+          elif "NAMA" in c_up and ("ITEM" in c_up or "BAHAN" in c_up):
+            col_nama_item = c
+          elif "TARGET" in c_up and "QTY" in c_up:
+            col_target_qty = c
+          elif "TARGET" in c_up and "UNIT" in c_up:
+            col_target_unit = c
+          elif c_up == "QTY" or (
+              "QTY" in c_up and "TARGET" not in c_up and "BB" not in c_up
+          ):
+            col_qty = c
+          elif c_up == "UNIT" or (
+              "UNIT" in c_up and "TARGET" not in c_up and "SATUAN" in c_up
+          ):
+            col_unit = c
+
+        # Fallback jika penamaan kolom sangat berbeda
         if not col_kode_item:
           master_df["Kode Item"] = ""
           col_kode_item = "Kode Item"
@@ -209,55 +231,52 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           if col in master_df.columns:
             master_df[col] = master_df[col].ffill()
 
-        # 2. QTY Target Standar (GR) - Sesuai Rumus Excel
-        if (
-            "Target Qty" in master_df.columns
-            and "Target Unit" in master_df.columns
-        ):
+        # 2. QTY Target Standar (GR)
+        if col_target_qty and col_target_unit:
           master_df["QTY Target Standar (GR)"] = master_df.apply(
               lambda row: (
-                  pd.to_numeric(row["Target Qty"], errors="coerce") * 1000
-                  if str(row["Target Unit"]).strip().upper() == "KG"
-                  else pd.to_numeric(row["Target Qty"], errors="coerce")
+                  pd.to_numeric(row[col_target_qty], errors="coerce") * 1000
+                  if str(row[col_target_unit]).strip().upper() == "KG"
+                  else pd.to_numeric(row[col_target_qty], errors="coerce")
               )
-              if pd.notna(row.get("Target Qty"))
-              and str(row.get("Target Qty")).strip() != ""
+              if pd.notna(row.get(col_target_qty))
+              and str(row.get(col_target_qty)).strip() != ""
               else "",
               axis=1,
           )
           cols = list(master_df.columns)
           if (
               "QTY Target Standar (GR)" in cols
-              and "Target Unit" in cols
+              and col_target_unit in cols
           ):
             cols.remove("QTY Target Standar (GR)")
-            target_unit_idx = cols.index("Target Unit")
+            target_unit_idx = cols.index(col_target_unit)
             cols.insert(target_unit_idx + 1, "QTY Target Standar (GR)")
             master_df = master_df[cols]
         else:
           master_df["QTY Target Standar (GR)"] = ""
 
-        # 3. Qty BB Standar (GR) - Sesuai Rumus Excel
-        if "Qty" in master_df.columns and "Unit" in master_df.columns:
+        # 3. Qty BB Standar (GR)
+        if col_qty and col_unit:
           master_df["Qty BB Standar (GR)"] = master_df.apply(
               lambda row: (
-                  pd.to_numeric(row["Qty"], errors="coerce") * 1000
-                  if str(row["Unit"]).strip().upper() == "KG"
-                  else pd.to_numeric(row["Qty"], errors="coerce")
+                  pd.to_numeric(row[col_qty], errors="coerce") * 1000
+                  if str(row[col_unit]).strip().upper() == "KG"
+                  else pd.to_numeric(row[col_qty], errors="coerce")
               )
               if pd.notna(row.get(col_kode_item))
               and str(row.get(col_kode_item)).strip() != ""
               and "TOTAL" not in str(row.get(col_kode_item)).upper()
               and str(row.get(col_kode_item)).strip() != "Overhead Cost"
-              and pd.notna(row.get("Qty"))
-              and str(row.get("Qty")).strip() != ""
+              and pd.notna(row.get(col_qty))
+              and str(row.get(col_qty)).strip() != ""
               else "",
               axis=1,
           )
           cols = list(master_df.columns)
-          if "Qty BB Standar (GR)" in cols and "Qty" in cols:
+          if "Qty BB Standar (GR)" in cols and col_qty in cols:
             cols.remove("Qty BB Standar (GR)")
-            qty_idx = cols.index("Qty")
+            qty_idx = cols.index(col_qty)
             cols.insert(qty_idx + 1, "Qty BB Standar (GR)")
             master_df = master_df[cols]
         else:
@@ -343,17 +362,14 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             satuan_selisih_list.append("")
             continue
 
-          # Auto-fill Cek Jumlah Benang ke semua baris dalam kelompok kode transaksi yang sama
           cek_jumlah_benang_list.append(kode_benang_mapping.get(kode_trans, ""))
 
-          # Gudang dyeing STI tidak ada crosscheck & selisih
           if gudang == "Gudang dyeing STI":
             crosscheck_qty_list.append("")
             selisih_list.append("")
             satuan_selisih_list.append("")
             continue
 
-          # Crosscheck & Selisih hanya di baris pertama kelompok kode transaksi
           first_idx = master_df[master_df["Kode"] == kode_trans].index[0]
           if idx != first_idx:
             crosscheck_qty_list.append("")
@@ -397,7 +413,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
 
           selisih_val = target_qty - total_bb
 
-          # Pengecekan Keyword Case-Insensitive untuk Selisih Wajar
           nama_brg_jdi = str(row.get("Nama Barang Jadi", ""))
           ket = str(row.get("Keterangan", ""))
           ket_lain = str(row.get("Keterangan Lain", ""))
