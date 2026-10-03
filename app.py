@@ -1,4 +1,5 @@
 import io
+import re
 import pandas as pd
 import streamlit as st
 
@@ -344,8 +345,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
         satuan_selisih_list = []
 
         keywords = [
-            "TALI",
-            "KUR"
             "AVALAN",
             "CROCHET",
             "KOR",
@@ -353,6 +352,8 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             "KOLONG",
             "REEBOK",
             "ROLL",
+            "TALI",
+            "KUR",
         ]
         unique_kodes = master_df["Kode"].dropna().unique()
 
@@ -498,11 +499,19 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           total_bb = round(valid_qtys.sum(), 0)
           selisih_val = target_qty - total_bb
 
-          nama_brg_jdi = str(row.get("Nama Barang Jadi", ""))
-          ket = str(row.get("Keterangan", ""))
-          ket_lain = str(row.get("Keterangan Lain", ""))
-          combined_text = f"{nama_brg_jdi} {ket} {ket_lain}".upper()
-          has_keyword = any(kw in combined_text for kw in keywords)
+          # PENGECEKAN KATA KUNCI DI 3 KOLOM SECARA INDEPENDEN & FLEKSIBEL
+          cols_to_check = [
+              str(row.get("Nama Barang Jadi", "")),
+              str(row.get("Keterangan", "")),
+              str(row.get("Keterangan Lain", "")),
+          ]
+
+          has_keyword = False
+          for col_val in cols_to_check:
+            cleaned_val = re.sub(r'\s+', ' ', col_val).strip().upper()
+            if any(kw in cleaned_val for kw in keywords):
+              has_keyword = True
+              break
 
           if target_qty == total_bb:
             crosscheck_qty_list.append("CORRECT")
