@@ -134,10 +134,8 @@ if menu_pilihan == "📂 Master Data (Upload)":
 
     for file in uploaded_files:
       try:
-        # Membaca file Excel tanpa header
         df_raw = pd.read_excel(file, header=None)
 
-        # 1. Membersihkan 4 baris header ERP (mencari baris yang mengandung 'Tanggal', 'Gudang', 'Kode')
         header_row_idx = None
         for idx, row in df_raw.iterrows():
           row_str = str(row.values)
@@ -157,9 +155,7 @@ if menu_pilihan == "📂 Master Data (Upload)":
           df_clean.columns = df_raw.iloc[3]
           df_clean = df_clean.iloc[1:].copy()
 
-        # 2. HANYA membuang baris kosong mutlak jika seluruh kolom utamanya kosong, TANPA menghapus baris transaksi/summary apa pun
         df_clean = df_clean.dropna(how="all")
-
         all_dataframes.append(df_clean)
       except Exception as e:
         st.error(f"Gagal memproses file {file.name}: {e}")
@@ -168,9 +164,9 @@ if menu_pilihan == "📂 Master Data (Upload)":
       master_raw_combined = pd.concat(all_dataframes, ignore_index=True)
       st.session_state.raw_master = master_raw_combined
       st.success(
-          "✅ File berhasil di-upload dan dibersihkan dari header ERP!"
-          " Seluruh baris transaksi & summary dipertahankan lengkap."
-          " Silakan pindah ke menu **Proses & Analisis Data** di sidebar."
+          "✅ File berhasil di-upload dan dibersihkan! Seluruh baris transaksi"
+          " dipertahankan lengkap. Silakan pindah ke menu **Proses & Analisis"
+          " Data** di sidebar."
       )
 
       st.markdown("#### Preview Data Mentah:")
@@ -193,11 +189,12 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
       ):
         master_df = st.session_state.raw_master.copy()
 
-        # 1. Forward Fill kolom identitas agar kelompok transaksi tetap terbaca
+        # 1. Forward Fill kolom identitas agar kelompok transaksi tetap terbaca utuh
         fill_cols = [
             "Gudang",
             "Kode",
             "Status",
+            "Kode BOM",
             "Kode Barang Jadi",
             "Nama Barang Jadi",
         ]
@@ -205,7 +202,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           if col in master_df.columns:
             master_df[col] = master_df[col].ffill()
 
-        # 2. QTY Target Standar (GR) tepat di sebelah kanan Target Unit
+        # 2. QTY Target Standar (GR) tepat di sebelah kanan Target Unit & Forward Fill ke bawah dalam satu kelompok MB
         if (
             "Target Qty" in master_df.columns
             and "Target Unit" in master_df.columns
@@ -218,6 +215,12 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               ),
               axis=1,
           )
+          # Forward fill agar baris bahan baku di bawahnya ikut terisi nilai target standar
+          if "Kode" in master_df.columns:
+            master_df["QTY Target Standar (GR)"] = master_df.groupby("Kode")[
+                "QTY Target Standar (GR)"
+            ].ffill()
+
           cols = list(master_df.columns)
           if (
               "QTY Target Standar (GR)" in cols
@@ -257,7 +260,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
         if "Nama Barang Jadi" not in master_df.columns:
           master_df["Nama Barang Jadi"] = ""
 
-        # Algoritma Audit (menggunakan Kode Item dan Nama Item)
+        # 4. Algoritma Audit & Cek Jumlah Benang (Auto-fill per Kelompok Kode MB)
         cek_jumlah_benang_list = []
         crosscheck_qty_list = []
         selisih_list = []
@@ -273,35 +276,75 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             "ROLL",
         ]
 
+        # Pre-calculate mapping untuk Cek Jumlah Benang per Kode MB
+        kode_benang_mapping = {}
+        unique_kodes = master_df["Kode"].dropna().unique()
+
+        for kode_trans in unique_kodes:
+          sub_df = master_df[master_df["Kode"] == kode_trans]
+          gudang_val = str(sub_df.iloc[0].get("Gudang", ""))
+
+          if gudang_val == "Gudang dyeing STI":
+            benang_sub = sub_df[
+                sub_df["Kode Item"]
+                .astype(str)
+                .str.startswith(("TWP", "MWP", "TBM"), na=False)
+            ]
+            if not benang_sub.empty:
+              unique_benang = ", ".join(
+                  benang_sub["Kode Item"].astype(str).unique()
+              )
+              kode_benang_mapping[kode_trans] = unique_benang
+            else:
+              kode_benang_mapping[kode_trans] = "TIDAK ADA BENANG"
+          else:
+            benang_sub = sub_df[
+                sub_df["Kode Item"]
+                .astype(str)
+                .str.startswith(("TBB", "MBB", "MWP", "TWP", "TBM"), na=False)
+            ]
+            if not benang_sub.empty:
+              unique_benang = ", ".join(
+                  benang_sub["Kode Item"].astype(str).unique()
+              )
+              kode_benang_mapping[kode_trans] = unique_benang
+            else:
+              kode_benang_mapping[kode_trans] = "Tidak Ada TWP/MWP/TBM"
+
         for idx, row in master_df.iterrows():
           kode_trans = str(row.get("Kode", ""))
           gudang = str(row.get("Gudang", ""))
           kode_item = str(row.get("Kode Item", ""))
-          nama_brg_jdi = str(row.get("Nama Barang Jadi", ""))
-          ket = str(row.get("Keterangan", ""))
-          ket_lain = str(row.get("Keterangan Lain", ""))
 
-          if (
-              not kode_trans
-              or kode_trans == "nan"
-              or not kode_item
-              or kode_item == "nan"
-          ):
+          # Jika baris kosong / baris total tanpa kode transaksi
+          if not kode_trans or kode_trans == "nan":
             cek_jumlah_benang_list.append("")
             crosscheck_qty_list.append("")
             selisih_list.append("")
             satuan_selisih_list.append("")
             continue
 
+          # Auto-fill Cek Jumlah Benang ke semua baris dalam kelompok kode MB yang sama
+          cek_jumlah_benang_list.append(kode_benang_mapping.get(kode_trans, ""))
+
+          # Khusus Gudang dyeing STI: Tidak ada proses crosscheck dan selisih (dikosongkan)
           if gudang == "Gudang dyeing STI":
-            cek_jumlah_benang_list.append("")
+            crosscheck_qty_list.append("")
+            selisih_list.append("")
+            satuan_selisih_list.append("")
+            continue
+
+          # Crosscheck hanya dieksekusi di baris pertama dari kelompok kode transaksi
+          first_idx_for_code = master_df[master_df["Kode"] == kode_trans].index[
+              0
+          ]
+          if idx != first_idx_for_code:
             crosscheck_qty_list.append("")
             selisih_list.append("")
             satuan_selisih_list.append("")
             continue
 
           sub_df = master_df[master_df["Kode"] == kode_trans]
-
           if gudang == "PRODUKSI SOFTCONE":
             benang_sub = sub_df[
                 sub_df["Kode Item"]
@@ -314,23 +357,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
                 .astype(str)
                 .str.startswith(("TWP", "MWP", "TBM"), na=False)
             ]
-
-          if not benang_sub.empty:
-            unique_benang = ", ".join(
-                benang_sub["Kode Item"].astype(str).unique()
-            )
-            cek_jumlah_benang_list.append(unique_benang)
-          else:
-            cek_jumlah_benang_list.append("Tidak Ada TWP/MWP/TBM")
-
-          first_idx_for_code = master_df[master_df["Kode"] == kode_trans].index[
-              0
-          ]
-          if idx != first_idx_for_code:
-            crosscheck_qty_list.append("")
-            selisih_list.append("")
-            satuan_selisih_list.append("")
-            continue
 
           target_qty = round(
               float(
@@ -363,6 +389,9 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             total_bb = 0
 
           selisih_val = target_qty - total_bb
+          nama_brg_jdi = str(row.get("Nama Barang Jadi", ""))
+          ket = str(row.get("Keterangan", ""))
+          ket_lain = str(row.get("Keterangan Lain", ""))
           combined_text = f"{nama_brg_jdi} {ket} {ket_lain}".upper()
           has_keyword = any(kw in combined_text for kw in keywords)
 
@@ -411,12 +440,18 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             ),
         )
 
-      valid_status = processed_df["Crosscheck Qty"].replace("", pd.NA).dropna()
-      total_trx = len(valid_status)
-      correct_count = (valid_status == "CORRECT").sum()
-      incorrect_normal = (valid_status == "INCORRECT").sum()
+      valid_status = (
+          processed_df["Crosscheck Qty"]
+          .replace("", pd.NA)
+          .dropna()
+          .replace("TIDAK ADA BENANG", pd.NA)
+          .dropna()
+      )
+      total_trx = len(processed_df["Kode"].dropna().unique())
+      correct_count = (processed_df["Crosscheck Qty"] == "CORRECT").sum()
+      incorrect_normal = (processed_df["Crosscheck Qty"] == "INCORRECT").sum()
       incorrect_wajar = (
-          valid_status == "INCORRECT (Memang Benar Selisih)"
+          processed_df["Crosscheck Qty"] == "INCORRECT (Memang Benar Selisih)"
       ).sum()
 
       m1, m2, m3, m4 = st.columns(4)
