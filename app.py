@@ -594,24 +594,34 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
       with col_dl2:
         output_buffer_inc = io.BytesIO()
         with pd.ExcelWriter(output_buffer_inc, engine="openpyxl") as writer:
-          df_inc_normal = processed_df[
-              processed_df["Crosscheck Qty"] == "INCORRECT"
-          ]
-          df_inc_wajar = processed_df[
-              processed_df["Crosscheck Qty"]
-              == "INCORRECT (Memang Benar Selisih)"
-          ]
+          # Ambil daftar Kode yang statusnya INCORRECT (hanya dari baris pertama kelompok transaksi)
+          kodes_incorrect = processed_df[
+              (processed_df["Crosscheck Qty"] == "INCORRECT") & 
+              (processed_df["Kode"].notna()) & 
+              (processed_df["Kode"] != "")
+          ]["Kode"].unique()
 
-          df_inc_normal.to_excel(writer, index=False, sheet_name="INCORRECT")
-          df_inc_wajar.to_excel(
+          # Ambil daftar Kode yang statusnya INCORRECT (Memang Benar Selisih)
+          kodes_wajar = processed_df[
+              (processed_df["Crosscheck Qty"] == "INCORRECT (Memang Benar Selisih)") & 
+              (processed_df["Kode"].notna()) & 
+              (processed_df["Kode"] != "")
+          ]["Kode"].unique()
+
+          # Filter seluruh baris yang memiliki Kode tersebut (satu kelompok data MB utuh)
+          df_inc_normal_full = processed_df[processed_df["Kode"].isin(kodes_incorrect)]
+          df_inc_wajar_full = processed_df[processed_df["Kode"].isin(kodes_wajar)]
+
+          df_inc_normal_full.to_excel(writer, index=False, sheet_name="INCORRECT")
+          df_inc_wajar_full.to_excel(
               writer, index=False, sheet_name="INCORRECT (Selisih Wajar)"
           )
         excel_data_inc = output_buffer_inc.getvalue()
 
         st.download_button(
-            label="📥 Download Rekap Khusus INCORRECT (2 Sheet)",
+            label="📥 Download Rekap 1 Kelompok INCORRECT (2 Sheet)",
             data=excel_data_inc,
-            file_name="Laporan_Rekap_Incorrect_MB.xlsx",
+            file_name="Laporan_Rekap_Incorrect_Satu_Kelompok.xlsx",
             mime=(
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             ),
