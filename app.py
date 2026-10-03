@@ -415,8 +415,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             )
             item_val_upper = item_val.upper()
 
-            # Hanya baris yang kodenya diawali TBB, MBB, MWP, TWP, TBM yang diproses.
-            # Baris ringkasan (TOTAL..., Overhead Cost, kosong, dll) dikosongkan.
             valid_prefixes = ("TBB", "MBB", "MWP", "TWP", "TBM")
             if item_val_upper.startswith(valid_prefixes):
               if item_val_upper.startswith("TBB"):
@@ -426,7 +424,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             else:
               cek_jumlah_benang_list.append("")
 
-            # Crosscheck, selisih, dan satuan selisih dikosongkan total untuk gudang ini
             crosscheck_qty_list.append("")
             selisih_list.append("")
             satuan_selisih_list.append("")
@@ -518,6 +515,13 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             satuan_selisih_list.append("GR")
 
         master_df["Cek jumlah benang"] = cek_jumlah_benang_list
+        
+        # Forward fill kolom "Cek jumlah benang" per kelompok transaksi (Kode)
+        if "Kode" in master_df.columns:
+          master_df["Cek jumlah benang"] = master_df["Cek jumlah benang"].replace("", pd.NA)
+          master_df["Cek jumlah benang"] = master_df.groupby("Kode")["Cek jumlah benang"].ffill()
+          master_df["Cek jumlah benang"] = master_df["Cek jumlah benang"].fillna("")
+
         master_df["Crosscheck Qty"] = crosscheck_qty_list
         master_df["Selisih"] = selisih_list
         master_df["Satuan Selisih"] = satuan_selisih_list
