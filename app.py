@@ -127,13 +127,12 @@ if menu_pilihan == "📂 Master Data (Upload)":
       try:
         df_raw = pd.read_excel(file, header=None)
 
-        # 1. Hapus 4 baris paling atas dan 4 baris paling bawah dari file mentah
+        # Hapus 4 baris paling atas dan 4 baris paling bawah
         if len(df_raw) > 8:
           df_trimmed = df_raw.iloc[4:-4].copy()
         else:
           df_trimmed = df_raw.copy()
 
-        # 2. Deteksi baris header di dalam data yang sudah dipangkas
         header_row_idx = None
         for idx, row in df_trimmed.iterrows():
           row_str = str(row.values)
@@ -152,7 +151,6 @@ if menu_pilihan == "📂 Master Data (Upload)":
           df_clean = df_trimmed.iloc[1:].copy()
           df_clean.columns = df_trimmed.iloc[0].values
 
-        # 3. Hapus baris kosong di antara data/transaksi
         df_clean = df_clean.dropna(how="all")
         all_dataframes.append(df_clean)
       except Exception as e:
@@ -162,9 +160,8 @@ if menu_pilihan == "📂 Master Data (Upload)":
       master_raw_combined = pd.concat(all_dataframes, ignore_index=True)
       st.session_state.raw_master = master_raw_combined
       st.success(
-          "✅ File berhasil di-upload! 4 baris atas, 4 baris bawah, serta baris"
-          " kosong berhasil dibersihkan. Silakan pindah ke menu **Proses &"
-          " Analisis Data** di sidebar."
+          "✅ File berhasil di-upload dan dibersihkan! Silakan pindah ke menu"
+          " **Proses & Analisis Data** di sidebar."
       )
 
       st.markdown("#### Preview Data Mentah:")
@@ -213,7 +210,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           elif k in ["UNIT", "SATUAN"]:
             col_unit = v
 
-        # Fallback pencarian fleksibel tambahan jika belum ketemu
+        # Fallback pencarian fleksibel
         if not col_kode_item:
           for k, v in col_mapping_std.items():
             if "KODE" in k:
@@ -240,9 +237,8 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               col_unit = v
               break
 
-        # Tampilkan informasi kolom yang terdeteksi untuk transparansi
         st.info(
-            f"ℹ️️ **Deteksi Kolom Otomatis:** Kode Item=`{col_kode_item}` | Target"
+            f"ℹ️ **Deteksi Kolom Otomatis:** Kode Item=`{col_kode_item}` | Target"
             f" Qty=`{col_target_qty}` | Target Unit=`{col_target_unit}` |"
             f" Qty=`{col_qty}` | Unit=`{col_unit}`"
         )
@@ -269,7 +265,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             master_df[col] = master_df.groupby("Kode")[col].ffill()
             master_df[col] = master_df[col].ffill()
 
-        # Fungsi konversi angka aman (mengatasi format string/desimal)
+        # Fungsi konversi angka aman
         def parse_numeric(val):
           if pd.isna(val) or str(val).strip() == "":
             return None
@@ -303,7 +299,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               else "",
               axis=1,
           )
-          # Posisikan kolom di sebelah Target Unit
           cols = list(master_df.columns)
           if (
               "QTY Target Standar (GR)" in cols
@@ -332,7 +327,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               else "",
               axis=1,
           )
-          # Posisikan kolom di sebelah Qty asli
           cols = list(master_df.columns)
           if "Qty BB Standar (GR)" in cols and col_qty in cols:
             cols.remove("Qty BB Standar (GR)")
@@ -490,11 +484,18 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           else:
             benang_sub = pd.DataFrame()
 
-          valid_qtys = pd.to_numeric(
-              benang_sub["Qty BB Standar (GR)"], errors="coerce"
-          ).dropna()
-          total_bb = round(valid_qtys.sum(), 0)
+          # AMAN DARI KEYERROR: Memastikan kolom ada di subset sebelum dihitung
+          if (
+              not benang_sub.empty
+              and "Qty BB Standar (GR)" in benang_sub.columns
+          ):
+            valid_qtys = pd.to_numeric(
+                benang_sub["Qty BB Standar (GR)"], errors="coerce"
+            ).dropna()
+          else:
+            valid_qtys = pd.Series(dtype=float)
 
+          total_bb = round(valid_qtys.sum(), 0)
           selisih_val = target_qty - total_bb
 
           nama_brg_jdi = str(row.get("Nama Barang Jadi", ""))
