@@ -359,9 +359,11 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           sub_df = master_df[master_df["Kode"] == kode_trans]
           if sub_df.empty:
             continue
-          gudang_val = str(sub_df.iloc[0].get("Gudang", "")).strip()
+          
+          # Ambil gudang dengan case-insensitive & bersih dari spasi
+          gudang_raw = str(sub_df.iloc[0].get("Gudang", "")).strip().lower()
 
-          if gudang_val in ["Gudang mesin dyeing", "GUDANG LAB & RnD"]:
+          if "mesin dyeing" in gudang_raw or "lab & rnd" in gudang_raw:
             if col_kode_item:
               benang_sub = sub_df[
                   sub_df[col_kode_item]
@@ -377,7 +379,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
                 kode_benang_mapping[kode_trans] = "Tidak Ada TWP/MWP/TBM"
             else:
               kode_benang_mapping[kode_trans] = ""
-          elif gudang_val == "PRODUKSI SOFTCONE":
+          elif "softcone" in gudang_raw:
             if col_kode_item:
               benang_sub = sub_df[
                   sub_df[col_kode_item]
@@ -398,7 +400,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
 
         for idx, row in master_df.iterrows():
           kode_trans = str(row.get("Kode", ""))
-          gudang = str(row.get("Gudang", "")).strip()
+          gudang = str(row.get("Gudang", "")).strip().lower()
 
           if not kode_trans or kode_trans == "nan":
             cek_jumlah_benang_list.append("")
@@ -407,9 +409,8 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             satuan_selisih_list.append("")
             continue
 
-          # ATURAN GUDANG DYEING STI
-          if gudang == "Gudang dyeing STI":
-            # Cek jumlah benang per baris berdasarkan kolom kode item
+          # ATURAN GUDANG DYEING STI (Fleksibel mengecek keyword "dyeing sti" tanpa peduli huruf besar/kecil)
+          if "dyeing sti" in gudang:
             item_val = (
                 str(row.get(col_kode_item, "")).strip() if col_kode_item else ""
             )
@@ -453,7 +454,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           target_qty = round(float(target_val), 0)
           sub_df = master_df[master_df["Kode"] == kode_trans]
 
-          if gudang == "PRODUKSI SOFTCONE":
+          if "softcone" in gudang:
             benang_sub = (
                 sub_df[
                     sub_df[col_kode_item]
@@ -465,7 +466,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
                 if col_kode_item
                 else pd.DataFrame()
             )
-          elif gudang in ["Gudang mesin dyeing", "GUDANG LAB & RnD"]:
+          elif "mesin dyeing" in gudang or "lab & rnd" in gudang:
             benang_sub = (
                 sub_df[
                     sub_df[col_kode_item]
@@ -571,7 +572,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               "Tampilkan Semua",
               "CORRECT",
               "INCORRECT",
-              "INCORRECT (Memang Benar Selisih)",
+              "INCORRECT (Memang Benار Selisih)",
           ],
       )
 
