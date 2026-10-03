@@ -177,6 +177,25 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
       with st.spinner("Sedang mengeksekusi rumus dan logika audit akurat..."):
         master_df = st.session_state.raw_master.copy()
 
+        # Deteksi kolom Kode Item dan Nama Item secara aman dari format ERP baru
+        col_kode_item = (
+            "Kode Item"
+            if "Kode Item" in master_df.columns
+            else ("Kode Bahan Baku" if "Kode Bahan Baku" in master_df.columns else None)
+        )
+        col_nama_item = (
+            "Nama Item"
+            if "Nama Item" in master_df.columns
+            else ("Nama Bahan Baku" if "Nama Bahan Baku" in master_df.columns else None)
+        )
+
+        if not col_kode_item:
+          master_df["Kode Item"] = ""
+          col_kode_item = "Kode Item"
+        if not col_nama_item:
+          master_df["Nama Item"] = ""
+          col_nama_item = "Nama Item"
+
         # 1. Forward Fill kolom identitas agar kelompok transaksi tetap terbaca utuh
         fill_cols = [
             "Gudang",
@@ -190,7 +209,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           if col in master_df.columns:
             master_df[col] = master_df[col].ffill()
 
-        # 2. QTY Target Standar (GR) - Sesuai Rumus Excel (hanya baris target di baris atas transaksi)
+        # 2. QTY Target Standar (GR) - Sesuai Rumus Excel
         if (
             "Target Qty" in master_df.columns
             and "Target Unit" in master_df.columns
@@ -226,10 +245,10 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
                   if str(row["Unit"]).strip().upper() == "KG"
                   else pd.to_numeric(row["Qty"], errors="coerce")
               )
-              if pd.notna(row.get("Kode Item"))
-              and str(row.get("Kode Item")).strip() != ""
-              and "TOTAL" not in str(row.get("Kode Item")).upper()
-              and str(row.get("Kode Item")).strip() != "Overhead Cost"
+              if pd.notna(row.get(col_kode_item))
+              and str(row.get(col_kode_item)).strip() != ""
+              and "TOTAL" not in str(row.get(col_kode_item)).upper()
+              and str(row.get(col_kode_item)).strip() != "Overhead Cost"
               and pd.notna(row.get("Qty"))
               and str(row.get("Qty")).strip() != ""
               else "",
@@ -249,7 +268,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             "Keterangan",
             "Keterangan Lain",
             "Nama Barang Jadi",
-            "Kode Item",
+            col_kode_item,
         ]:
           if col_name not in master_df.columns:
             master_df[col_name] = ""
@@ -279,7 +298,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           gudang_val = str(sub_df.iloc[0].get("Gudang", "")).strip()
 
           if gudang_val == "Gudang dyeing STI":
-            item_list = sub_df["Kode Item"].dropna().astype(str).tolist()
+            item_list = sub_df[col_kode_item].dropna().astype(str).tolist()
             if not item_list:
               kode_benang_mapping[kode_trans] = "BUKAN BENANG"
             else:
@@ -290,23 +309,23 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
                 kode_benang_mapping[kode_trans] = "BUKAN CND"
           elif gudang_val in ["Gudang mesin dyeing", "GUDANG LAB & RnD"]:
             benang_sub = sub_df[
-                sub_df["Kode Item"]
+                sub_df[col_kode_item]
                 .astype(str)
                 .str.startswith(("TWP", "MWP", "TBM"), na=False)
             ]
             if not benang_sub.empty:
-              unique_b = ", ".join(benang_sub["Kode Item"].astype(str).unique())
+              unique_b = ", ".join(benang_sub[col_kode_item].astype(str).unique())
               kode_benang_mapping[kode_trans] = unique_b
             else:
               kode_benang_mapping[kode_trans] = "Tidak Ada TWP/MWP/TBM"
           elif gudang_val == "PRODUKSI SOFTCONE":
             benang_sub = sub_df[
-                sub_df["Kode Item"]
+                sub_df[col_kode_item]
                 .astype(str)
                 .str.startswith(("TBB", "MBB", "MWP", "TWP", "TBM"), na=False)
             ]
             if not benang_sub.empty:
-              unique_b = ", ".join(benang_sub["Kode Item"].astype(str).unique())
+              unique_b = ", ".join(benang_sub[col_kode_item].astype(str).unique())
               kode_benang_mapping[kode_trans] = unique_b
             else:
               kode_benang_mapping[kode_trans] = "Tidak Ada TWP/MWP/TBM"
@@ -358,13 +377,13 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
 
           if gudang == "PRODUKSI SOFTCONE":
             benang_sub = sub_df[
-                sub_df["Kode Item"]
+                sub_df[col_kode_item]
                 .astype(str)
                 .str.startswith(("TBB", "MBB", "TWP", "MWP", "TBM"), na=False)
             ]
           elif gudang in ["Gudang mesin dyeing", "GUDANG LAB & RnD"]:
             benang_sub = sub_df[
-                sub_df["Kode Item"]
+                sub_df[col_kode_item]
                 .astype(str)
                 .str.startswith(("TWP", "MWP", "TBM"), na=False)
             ]
