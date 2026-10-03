@@ -177,46 +177,31 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
       with st.spinner("Sedang mengeksekusi rumus dan logika audit akurat..."):
         master_df = st.session_state.raw_master.copy()
 
-        # Bersihkan spasi di nama kolom
+        # Bersihkan spasi di nama kolom agar aman
         master_df.columns = [
             str(c).strip() if pd.notna(c) else f"Unnamed_{i}"
             for i, c in enumerate(master_df.columns)
         ]
 
-        # Deteksi Kolom secara Fleksibel (Mencegah kolom tidak terbaca)
-        col_kode_item = None
-        col_nama_item = None
-        col_target_qty = None
-        col_target_unit = None
-        col_qty = None
-        col_unit = None
-
+        # Buat mapping nama kolom asli ke versi standar (mengabaikan besar/kecil huruf)
+        col_mapping_std = {}
         for c in master_df.columns:
-          c_up = c.upper()
-          if "KODE" in c_up and ("ITEM" in c_up or "BAHAN" in c_up):
-            col_kode_item = c
-          elif "NAMA" in c_up and ("ITEM" in c_up or "BAHAN" in c_up):
-            col_nama_item = c
-          elif "TARGET" in c_up and "QTY" in c_up:
-            col_target_qty = c
-          elif "TARGET" in c_up and "UNIT" in c_up:
-            col_target_unit = c
-          elif c_up == "QTY" or (
-              "QTY" in c_up and "TARGET" not in c_up and "BB" not in c_up
-          ):
-            col_qty = c
-          elif c_up == "UNIT" or (
-              "UNIT" in c_up and "TARGET" not in c_up and "SATUAN" in c_up
-          ):
-            col_unit = c
+          c_clean = str(c).strip()
+          col_mapping_std[c_clean.upper()] = c_clean
 
-        # Fallback jika penamaan kolom sangat berbeda
+        # Ambil nama kolom secara case-insensitive
+        col_kode_item = col_mapping_std.get("KODE ITEM") or col_mapping_std.get(
+            "KODE"
+        )
+        col_target_qty = col_mapping_std.get("TARGET QTY")
+        col_target_unit = col_mapping_std.get("TARGET UNIT")
+        col_qty = col_mapping_std.get("QTY")
+        col_unit = col_mapping_std.get("UNIT")
+
+        # Fallback jika kolom tidak ketemu sama sekali
         if not col_kode_item:
           master_df["Kode Item"] = ""
           col_kode_item = "Kode Item"
-        if not col_nama_item:
-          master_df["Nama Item"] = ""
-          col_nama_item = "Nama Item"
 
         # 1. Forward Fill kolom identitas agar kelompok transaksi tetap terbaca utuh
         fill_cols = [
@@ -231,7 +216,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           if col in master_df.columns:
             master_df[col] = master_df[col].ffill()
 
-        # 2. QTY Target Standar (GR)
+        # 2. QTY Target Standar (GR) - Pencocokan aman dari huruf kapital/kecil
         if col_target_qty and col_target_unit:
           master_df["QTY Target Standar (GR)"] = master_df.apply(
               lambda row: (
@@ -256,7 +241,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
         else:
           master_df["QTY Target Standar (GR)"] = ""
 
-        # 3. Qty BB Standar (GR)
+        # 3. Qty BB Standar (GR) - Pencocokan aman dari huruf kapital/kecil
         if col_qty and col_unit:
           master_df["Qty BB Standar (GR)"] = master_df.apply(
               lambda row: (
