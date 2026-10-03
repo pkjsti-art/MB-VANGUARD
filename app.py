@@ -344,6 +344,8 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
         satuan_selisih_list = []
 
         keywords = [
+            "TALI",
+            "KUR"
             "AVALAN",
             "CROCHET",
             "KOR",
