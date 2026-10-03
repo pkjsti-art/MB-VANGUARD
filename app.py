@@ -177,33 +177,73 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
       with st.spinner("Sedang mengeksekusi rumus dan logika audit akurat..."):
         master_df = st.session_state.raw_master.copy()
 
-        # Bersihkan spasi di nama kolom agar aman
+        # Bersihkan nama kolom dari spasi ekstra
         master_df.columns = [
             str(c).strip() if pd.notna(c) else f"Unnamed_{i}"
             for i, c in enumerate(master_df.columns)
         ]
 
-        # Buat mapping nama kolom asli ke versi standar (mengabaikan besar/kecil huruf)
+        # Pemetaan Kolom Fleksibel (Keyword Matching)
         col_mapping_std = {}
         for c in master_df.columns:
-          c_clean = str(c).strip()
-          col_mapping_std[c_clean.upper()] = c_clean
+          col_mapping_std[str(c).strip().upper()] = c
 
-        # Ambil nama kolom secara case-insensitive
-        col_kode_item = col_mapping_std.get("KODE ITEM") or col_mapping_std.get(
-            "KODE"
-        )
-        col_target_qty = col_mapping_std.get("TARGET QTY")
-        col_target_unit = col_mapping_std.get("TARGET UNIT")
-        col_qty = col_mapping_std.get("QTY")
-        col_unit = col_mapping_std.get("UNIT")
+        col_kode_item = None
+        col_target_qty = None
+        col_target_unit = None
+        col_qty = None
+        col_unit = None
 
-        # Fallback jika kolom tidak ketemu sama sekali
+        for k, v in col_mapping_std.items():
+          if "KODE" in k and ("ITEM" in k or "BARANG" in k):
+            col_kode_item = v
+          elif "TARGET" in k and "QTY" in k:
+            col_target_qty = v
+          elif "TARGET" in k and "UNIT" in k:
+            col_target_unit = v
+          elif k in ["QTY", "JUMLAH", "QUANTITY"]:
+            col_qty = v
+          elif k in ["UNIT", "SATUAN"]:
+            col_unit = v
+
+        # Fallback pencarian fleksibel tambahan jika belum ketemu
         if not col_kode_item:
-          master_df["Kode Item"] = ""
-          col_kode_item = "Kode Item"
+          for k, v in col_mapping_std.items():
+            if "KODE" in k:
+              col_kode_item = v
+              break
+        if not col_target_qty:
+          for k, v in col_mapping_std.items():
+            if "TARGET" in k:
+              col_target_qty = v
+              break
+        if not col_target_unit:
+          for k, v in col_mapping_std.items():
+            if "UNIT" in k and v != col_unit:
+              col_target_unit = v
+              break
+        if not col_qty:
+          for k, v in col_mapping_std.items():
+            if "QTY" in k:
+              col_qty = v
+              break
+        if not col_unit:
+          for k, v in col_mapping_std.items():
+            if "UNIT" in k and v != col_target_unit:
+              col_unit = v
+              break
 
-        # 1. Forward Fill kolom identitas agar kelompok transaksi tetap terbaca utuh
+        # Tampilkan informasi kolom yang terdeteksi untuk transparansi
+        st.info(
+            f"ℹ️ **Deteksi Kolom Otomatis:** Kode Item=`{col_kode_item}` | Target"
+            f" Qty=`{col_target_qty}` | Target Unit=`{col_target_unit}` |"
+            f" Qty=`{col_qty}` | Unit=`{col_unit}`"
+        )
+
+        # 1. Forward Fill kolom Kode dan Identitas agar transaksi utuh
+        if "Kode" in master_df.columns:
+          master_df["Kode"] = master_df["Kode"].ffill()
+
         fill_cols = [
             "Gudang",
             "Kode",
@@ -212,70 +252,98 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             "Kode Barang Jadi",
             "Nama Barang Jadi",
         ]
+        if col_target_qty and col_target_qty in master_df.columns:
+          fill_cols.append(col_target_qty)
+        if col_target_unit and col_target_unit in master_df.columns:
+          fill_cols.append(col_target_unit)
+
         for col in fill_cols:
           if col in master_df.columns:
+            master_df[col] = master_df.groupby("Kode")[col].ffill()
             master_df[col] = master_df[col].ffill()
 
-        # 2. QTY Target Standar (GR) - Pencocokan aman dari huruf kapital/kecil
+        # Fungsi konversi angka aman (mengatasi format string/desimal)
+        def parse_numeric(val):
+          if pd.isna(val) or str(val).strip() == "":
+            return None
+          if isinstance(val, (int, float)):
+            return float(val)
+          try:
+            s = str(val).strip()
+            if "," in s and "." in s:
+              if s.find(",") > s.find("."):
+                s = s.replace(".", "").replace(",", ".")
+              else:
+                s = s.replace(",", "")
+            elif "," in s and "." not in s:
+              s = s.replace(",", ".")
+            return float(s)
+          except:
+            return pd.to_numeric(str(val), errors="coerce")
+
+        # 2. QTY Target Standar (GR)
         if col_target_qty and col_target_unit:
           master_df["QTY Target Standar (GR)"] = master_df.apply(
               lambda row: (
-                  pd.to_numeric(row[col_target_qty], errors="coerce") * 1000
-                  if str(row[col_target_unit]).strip().upper() == "KG"
-                  else pd.to_numeric(row[col_target_qty], errors="coerce")
+                  parse_numeric(row[col_target_qty]) * 1000
+                  if str(row.get(col_target_unit, ""))
+                  .strip()
+                  .upper()
+                   in ["KG", "KGS"]
+                  else parse_numeric(row[col_target_qty])
               )
-              if pd.notna(row.get(col_target_qty))
-              and str(row.get(col_target_qty)).strip() != ""
+              if parse_numeric(row.get(col_target_qty)) is not None
               else "",
               axis=1,
           )
+          # Posisikan kolom di sebelah Target Unit
           cols = list(master_df.columns)
           if (
               "QTY Target Standar (GR)" in cols
               and col_target_unit in cols
           ):
             cols.remove("QTY Target Standar (GR)")
-            target_unit_idx = cols.index(col_target_unit)
-            cols.insert(target_unit_idx + 1, "QTY Target Standar (GR)")
+            tu_idx = cols.index(col_target_unit)
+            cols.insert(tu_idx + 1, "QTY Target Standar (GR)")
             master_df = master_df[cols]
         else:
           master_df["QTY Target Standar (GR)"] = ""
 
-        # 3. Qty BB Standar (GR) - Pencocokan aman dari huruf kapital/kecil
+        # 3. Qty BB Standar (GR)
         if col_qty and col_unit:
           master_df["Qty BB Standar (GR)"] = master_df.apply(
               lambda row: (
-                  pd.to_numeric(row[col_qty], errors="coerce") * 1000
-                  if str(row[col_unit]).strip().upper() == "KG"
-                  else pd.to_numeric(row[col_qty], errors="coerce")
+                  parse_numeric(row[col_qty]) * 1000
+                  if str(row.get(col_unit, "")).strip().upper() in ["KG", "KGS"]
+                  else parse_numeric(row[col_qty])
               )
               if pd.notna(row.get(col_kode_item))
               and str(row.get(col_kode_item)).strip() != ""
               and "TOTAL" not in str(row.get(col_kode_item)).upper()
               and str(row.get(col_kode_item)).strip() != "Overhead Cost"
-              and pd.notna(row.get(col_qty))
-              and str(row.get(col_qty)).strip() != ""
+              and parse_numeric(row.get(col_qty)) is not None
               else "",
               axis=1,
           )
+          # Posisikan kolom di sebelah Qty asli
           cols = list(master_df.columns)
           if "Qty BB Standar (GR)" in cols and col_qty in cols:
             cols.remove("Qty BB Standar (GR)")
-            qty_idx = cols.index(col_qty)
-            cols.insert(qty_idx + 1, "Qty BB Standar (GR)")
+            q_idx = cols.index(col_qty)
+            cols.insert(q_idx + 1, "Qty BB Standar (GR)")
             master_df = master_df[cols]
         else:
           master_df["Qty BB Standar (GR)"] = ""
 
-        # Pastikan kolom teks aman
-        for col_name in [
+        # Pastikan kolom teks pendukung aman
+        for c_name in [
             "Keterangan",
             "Keterangan Lain",
             "Nama Barang Jadi",
             col_kode_item,
         ]:
-          if col_name not in master_df.columns:
-            master_df[col_name] = ""
+          if c_name and c_name not in master_df.columns:
+            master_df[c_name] = ""
 
         # 4. Pemetaan Cek Benang, Crosscheck Qty, dan Selisih per Kelompok Transaksi
         cek_jumlah_benang_list = []
@@ -302,7 +370,11 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           gudang_val = str(sub_df.iloc[0].get("Gudang", "")).strip()
 
           if gudang_val == "Gudang dyeing STI":
-            item_list = sub_df[col_kode_item].dropna().astype(str).tolist()
+            item_list = (
+                sub_df[col_kode_item].dropna().astype(str).tolist()
+                if col_kode_item
+                else []
+            )
             if not item_list:
               kode_benang_mapping[kode_trans] = "BUKAN BENANG"
             else:
@@ -312,27 +384,37 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               else:
                 kode_benang_mapping[kode_trans] = "BUKAN CND"
           elif gudang_val in ["Gudang mesin dyeing", "GUDANG LAB & RnD"]:
-            benang_sub = sub_df[
-                sub_df[col_kode_item]
-                .astype(str)
-                .str.startswith(("TWP", "MWP", "TBM"), na=False)
-            ]
-            if not benang_sub.empty:
-              unique_b = ", ".join(benang_sub[col_kode_item].astype(str).unique())
-              kode_benang_mapping[kode_trans] = unique_b
+            if col_kode_item:
+              benang_sub = sub_df[
+                  sub_df[col_kode_item]
+                  .astype(str)
+                  .str.startswith(("TWP", "MWP", "TBM"), na=False)
+              ]
+              if not benang_sub.empty:
+                unique_b = ", ".join(
+                    benang_sub[col_kode_item].astype(str).unique()
+                )
+                kode_benang_mapping[kode_trans] = unique_b
+              else:
+                kode_benang_mapping[kode_trans] = "Tidak Ada TWP/MWP/TBM"
             else:
-              kode_benang_mapping[kode_trans] = "Tidak Ada TWP/MWP/TBM"
+              kode_benang_mapping[kode_trans] = ""
           elif gudang_val == "PRODUKSI SOFTCONE":
-            benang_sub = sub_df[
-                sub_df[col_kode_item]
-                .astype(str)
-                .str.startswith(("TBB", "MBB", "MWP", "TWP", "TBM"), na=False)
-            ]
-            if not benang_sub.empty:
-              unique_b = ", ".join(benang_sub[col_kode_item].astype(str).unique())
-              kode_benang_mapping[kode_trans] = unique_b
+            if col_kode_item:
+              benang_sub = sub_df[
+                  sub_df[col_kode_item]
+                  .astype(str)
+                  .str.startswith(("TBB", "MBB", "MWP", "TWP", "TBM"), na=False)
+              ]
+              if not benang_sub.empty:
+                unique_b = ", ".join(
+                    benang_sub[col_kode_item].astype(str).unique()
+                )
+                kode_benang_mapping[kode_trans] = unique_b
+              else:
+                kode_benang_mapping[kode_trans] = "Tidak Ada TWP/MWP/TBM"
             else:
-              kode_benang_mapping[kode_trans] = "Tidak Ada TWP/MWP/TBM"
+              kode_benang_mapping[kode_trans] = ""
           else:
             kode_benang_mapping[kode_trans] = ""
 
@@ -377,17 +459,27 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           sub_df = master_df[master_df["Kode"] == kode_trans]
 
           if gudang == "PRODUKSI SOFTCONE":
-            benang_sub = sub_df[
-                sub_df[col_kode_item]
-                .astype(str)
-                .str.startswith(("TBB", "MBB", "TWP", "MWP", "TBM"), na=False)
-            ]
+            benang_sub = (
+                sub_df[
+                    sub_df[col_kode_item]
+                    .astype(str)
+                    .str.startswith(
+                        ("TBB", "MBB", "TWP", "MWP", "TBM"), na=False
+                    )
+                ]
+                if col_kode_item
+                else pd.DataFrame()
+            )
           elif gudang in ["Gudang mesin dyeing", "GUDANG LAB & RnD"]:
-            benang_sub = sub_df[
-                sub_df[col_kode_item]
-                .astype(str)
-                .str.startswith(("TWP", "MWP", "TBM"), na=False)
-            ]
+            benang_sub = (
+                sub_df[
+                    sub_df[col_kode_item]
+                    .astype(str)
+                    .str.startswith(("TWP", "MWP", "TBM"), na=False)
+                ]
+                if col_kode_item
+                else pd.DataFrame()
+            )
           else:
             benang_sub = pd.DataFrame()
 
