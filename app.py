@@ -360,7 +360,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           if sub_df.empty:
             continue
           
-          # Ambil gudang dengan case-insensitive & bersih dari spasi
           gudang_raw = str(sub_df.iloc[0].get("Gudang", "")).strip().lower()
 
           if "mesin dyeing" in gudang_raw or "lab & rnd" in gudang_raw:
@@ -409,17 +408,25 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             satuan_selisih_list.append("")
             continue
 
-          # ATURAN GUDANG DYEING STI (Fleksibel mengecek keyword "dyeing sti" tanpa peduli huruf besar/kecil)
+          # ATURAN GUDANG DYEING STI
           if "dyeing sti" in gudang:
             item_val = (
                 str(row.get(col_kode_item, "")).strip() if col_kode_item else ""
             )
-            if item_val and item_val.startswith("TBB"):
-              cek_jumlah_benang_list.append("BUKAN BENANG")
-            else:
-              cek_jumlah_benang_list.append("BUKAN CND")
+            item_val_upper = item_val.upper()
 
-            # Crosscheck, selisih, dan satuan selisih dikosongkan total
+            # Hanya baris yang kodenya diawali TBB, MBB, MWP, TWP, TBM yang diproses.
+            # Baris ringkasan (TOTAL..., Overhead Cost, kosong, dll) dikosongkan.
+            valid_prefixes = ("TBB", "MBB", "MWP", "TWP", "TBM")
+            if item_val_upper.startswith(valid_prefixes):
+              if item_val_upper.startswith("TBB"):
+                cek_jumlah_benang_list.append("BUKAN BENANG")
+              else:
+                cek_jumlah_benang_list.append("BUKAN CND")
+            else:
+              cek_jumlah_benang_list.append("")
+
+            # Crosscheck, selisih, dan satuan selisih dikosongkan total untuk gudang ini
             crosscheck_qty_list.append("")
             selisih_list.append("")
             satuan_selisih_list.append("")
@@ -572,7 +579,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               "Tampilkan Semua",
               "CORRECT",
               "INCORRECT",
-              "INCORRECT (Memang Benار Selisih)",
+              "INCORRECT (Memang Benar Selisih)",
           ],
       )
 
