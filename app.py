@@ -545,25 +545,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
       processed_df = st.session_state.processed_df
 
       st.markdown("---")
-      col_dl1, col_dl2 = st.columns([2, 1])
-      with col_dl1:
-        st.markdown("### 📊 Ringkasan Hasil Audit")
-      with col_dl2:
-        output_buffer = io.BytesIO()
-        with pd.ExcelWriter(output_buffer, engine="openpyxl") as writer:
-          processed_df.to_excel(
-              writer, index=False, sheet_name="Master_Validasi"
-          )
-        excel_data = output_buffer.getvalue()
-
-        st.download_button(
-            label="📥 Download Laporan Excel",
-            data=excel_data,
-            file_name="Laporan_Master_Validasi_MB.xlsx",
-            mime=(
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            ),
-        )
+      st.markdown("### 📊 Ringkasan Hasil Audit & Download Laporan")
 
       total_trx = len(processed_df["Kode"].dropna().unique())
       correct_count = (processed_df["Crosscheck Qty"] == "CORRECT").sum()
@@ -584,6 +566,56 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
       with m4:
         st.metric(
             label="Status: Selisih Wajar", value=f"{incorrect_wajar:,}"
+        )
+
+      st.markdown("---")
+
+      # BAGIAN TOMBOL DOWNLOAD (2 OPSI DOWNLOAD)
+      col_dl1, col_dl2 = st.columns(2)
+
+      with col_dl1:
+        output_buffer_all = io.BytesIO()
+        with pd.ExcelWriter(output_buffer_all, engine="openpyxl") as writer:
+          processed_df.to_excel(
+              writer, index=False, sheet_name="Master_Validasi"
+          )
+        excel_data_all = output_buffer_all.getvalue()
+
+        st.download_button(
+            label="📥 Download Semua Data (Lengkap)",
+            data=excel_data_all,
+            file_name="Laporan_Master_Validasi_MB.xlsx",
+            mime=(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            ),
+            use_container_width=True,
+        )
+
+      with col_dl2:
+        output_buffer_inc = io.BytesIO()
+        with pd.ExcelWriter(output_buffer_inc, engine="openpyxl") as writer:
+          df_inc_normal = processed_df[
+              processed_df["Crosscheck Qty"] == "INCORRECT"
+          ]
+          df_inc_wajar = processed_df[
+              processed_df["Crosscheck Qty"]
+              == "INCORRECT (Memang Benar Selisih)"
+          ]
+
+          df_inc_normal.to_excel(writer, index=False, sheet_name="INCORRECT")
+          df_inc_wajar.to_excel(
+              writer, index=False, sheet_name="INCORRECT (Selisih Wajar)"
+          )
+        excel_data_inc = output_buffer_inc.getvalue()
+
+        st.download_button(
+            label="📥 Download Rekap Khusus INCORRECT (2 Sheet)",
+            data=excel_data_inc,
+            file_name="Laporan_Rekap_Incorrect_MB.xlsx",
+            mime=(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            ),
+            use_container_width=True,
         )
 
       st.markdown("---")
