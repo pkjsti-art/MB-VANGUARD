@@ -240,24 +240,24 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             f" Qty=`{col_qty}` | Unit=`{col_unit}`"
         )
 
-        # 1. Forward Fill kolom Kode dan Identitas agar transaksi utuh
-        if "Kode" in master_df.columns:
-          master_df["Kode"] = master_df["Kode"].ffill()
-
-        fill_cols = [
+        # 1. Forward Fill HANYA untuk kolom: Gudang, Kode, Kode Barang Jadi, Nama Barang Jadi
+        target_fill_names = [
             "Gudang",
             "Kode",
-            "Status",
-            "Kode BOM",
             "Kode Barang Jadi",
             "Nama Barang Jadi",
         ]
-        if col_target_qty and col_target_qty in master_df.columns:
-          fill_cols.append(col_target_qty)
-        if col_target_unit and col_target_unit in master_df.columns:
-          fill_cols.append(col_target_unit)
+        actual_fill_cols = []
+        for target_name in target_fill_names:
+          for c in master_df.columns:
+            if str(c).strip().upper() == target_name.upper():
+              actual_fill_cols.append(c)
+              break
 
-        for col in fill_cols:
+        if "Kode" in master_df.columns:
+          master_df["Kode"] = master_df["Kode"].ffill()
+
+        for col in actual_fill_cols:
           if col in master_df.columns:
             master_df[col] = master_df.groupby("Kode")[col].ffill()
             master_df[col] = master_df[col].ffill()
@@ -281,7 +281,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           except:
             return pd.to_numeric(str(val), errors="coerce")
 
-        # 2. QTY Target Standar (GR)
+        # 2. QTY Target Standar (GR) (Tidak di-ffill, hanya muncul di baris pertama transaksi)
         if col_target_qty and col_target_unit:
           master_df["QTY Target Standar (GR)"] = master_df.apply(
               lambda row: (
