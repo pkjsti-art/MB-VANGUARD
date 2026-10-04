@@ -228,12 +228,13 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             for i, c in enumerate(master_df.columns)
         ]
 
-        # Pemetaan Kolom Fleksibel (Keyword Matching)
+        # Pemetaan Kolom Fleksibel (Keyword Matching) Master MB
         col_mapping_std = {}
         for c in master_df.columns:
           col_mapping_std[str(c).strip().upper()] = c
 
         col_kode_item = None
+        col_nama_item = None
         col_target_qty = None
         col_target_unit = None
         col_qty = None
@@ -242,6 +243,10 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
         for k, v in col_mapping_std.items():
           if "KODE" in k and ("ITEM" in k or "BARANG" in k):
             col_kode_item = v
+          elif ("NAMA" in k or "DESKRIPSI" in k or "URAIAN" in k) and (
+              "ITEM" in k or "BARANG" in k
+          ):
+            col_nama_item = v
           elif "TARGET" in k and "QTY" in k:
             col_target_qty = v
           elif "TARGET" in k and "UNIT" in k:
@@ -256,6 +261,12 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             if "KODE" in k:
               col_kode_item = v
               break
+        if not col_nama_item:
+          for k, v in col_mapping_std.items():
+            if "NAMA" in k or "BARANG" in k:
+              if v != col_kode_item:
+                col_nama_item = v
+                break
         if not col_target_qty:
           for k, v in col_mapping_std.items():
             if "TARGET" in k:
@@ -386,9 +397,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             "ROLL",
             "TALI",
             "KUR",
-            "HTC",
-            "CONS",
-            "AVL",
         ]
         unique_kodes = master_df["Kode"].dropna().unique()
 
@@ -570,7 +578,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
         master_df["Selisih"] = selisih_list
         master_df["Satuan Selisih"] = satuan_selisih_list
 
-        # --- 5. AUDIT OBAT (CHEMICAL & DYESTUFF) - HANYA ITEM TBB & JIKA ADA PIBC ---
+        # --- 5. AUDIT OBAT (CHEMICAL & DYESTUFF) - DETEKSI ITEM KURANG / BERLEBIHAN ---
         crosscheck_obat_list = []
         selisih_obat_list = []
         satuan_selisih_obat_list = []
@@ -612,9 +620,11 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           return None
 
 
+        # Pemetaan kolom Master Dyelot (Murni mencari kolom Kode Obat dan Obat/Nama Obat)
         d_col_kode = find_dyelot_col(
-            ["KODE OBAT", "KODE", "KODE ITEM", "ITEM CODE"]
+            ["KODE OBAT", "KODE ITEM", "KODE", "ITEM CODE"]
         )
+        d_col_nama = find_dyelot_col(["OBAT", "NAMA OBAT", "NAMA", "ITEM"])
         d_col_actual = find_dyelot_col(
             ["ACTUAL", "AKTUAL", "QTY ACTUAL", "QTY"]
         )
@@ -644,7 +654,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           )
           pibc_list = [m.upper().strip() for m in pibc_matches]
 
-          # JIKA TIDAK ADA PIBC DI KETERANGAN, SKIP (KOSONGKAN)
           if not has_dyelot_data or not pibc_list:
             group_summary_dict[kode_trans] = ""
             continue
@@ -670,68 +679,96 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           issues = []
           has_any_tbb = False
 
+          # Himpunan item TBB di Master MB
+          mb_tbb_dict = {}
           for _, row_item in sub_df.iterrows():
             item_code = (
                 str(row_item.get(col_kode_item, "")).strip()
                 if col_kode_item
                 else ""
             )
-            # HANYA AUDIT ITEM TBB
-            if not item_code.upper().startswith("TBB"):
-              continue
-
-            has_any_tbb = True
-            qty_mb_std = parse_numeric(
-                row_item.get("Qty BB Standar (GR)", 0)
-            )
-            if qty_mb_std is None:
-              qty_mb_std = 0.0
-
-            found_item = False
-            actual_dyelot = 0.0
-            for _, d_row in matched_dyelot_rows.iterrows():
-              d_k_obat = (
-                  str(d_row.get(d_col_kode, "")).strip() if d_col_kode else ""
+            if item_code.upper().startswith("TBB"):
+              has_any_tbb = True
+              item_name = (
+                  str(row_item.get(col_nama_item, "")).strip()
+                  if col_nama_item
+                  else ""
               )
-              if not d_k_obat and d_col_kode is None:
-                for val_d in d_row.values:
-                  if (
-                      pd.notna(val_d)
-                      and str(val_d).strip().upper() == item_code.upper()
-                  ):
-                    d_k_obat = str(val_d).strip()
-                    break
+              qty_mb_std = parse_numeric(
+                  row_item.get("Qty BB Standar (GR)", 0)
+              )
+              if qty_mb_std is None:
+                qty_mb_std = 0.0
+              mb_tbb_dict[item_code.upper()] = {
+                  "code": item_code,
+                  "name": item_name,
+                  "qty": qty_mb_std,
+              }
 
-              if d_k_obat.upper() == item_code.upper():
-                found_item = True
-                if d_col_actual:
-                  actual_dyelot = (
-                      parse_numeric(d_row.get(d_col_actual, 0)) or 0.0
-                  )
-                else:
-                  for val_d in d_row.values:
-                    parsed_val = parse_numeric(val_d)
-                    if parsed_val is not None and parsed_val > 0:
-                      actual_dyelot = parsed_val
-                      break
-                break
+          # Himpunan item TBB di Master Dyelot (Murni mengambil Kode & Nama dari kolom Kode Obat dan Obat Master Dyelot)
+          dyelot_tbb_dict = {}
+          for _, d_row in matched_dyelot_rows.iterrows():
+            d_k_obat = (
+                str(d_row.get(d_col_kode, "")).strip() if d_col_kode else ""
+            )
+            if not d_k_obat and d_col_kode is None:
+              for val_d in d_row.values:
+                if pd.notna(val_d) and str(val_d).strip().upper().startswith(
+                    "TBB"
+                ):
+                  d_k_obat = str(val_d).strip()
+                  break
 
-            if not found_item:
-              issues.append(f"Tidak ada [{item_code}]")
-            else:
-              diff_obat = round(qty_mb_std - actual_dyelot, 4)
-              if diff_obat != 0:
-                status_teks = "Lebih" if diff_obat > 0 else "Kurang"
-                issues.append(
-                    f"{status_teks} [{item_code}] {abs(diff_obat)} GR"
+            if d_k_obat.upper().startswith("TBB"):
+              d_name = (
+                  str(d_row.get(d_col_nama, "")).strip()
+                  if d_col_nama
+                  else "OBAT"
+              )
+              actual_val = 0.0
+              if d_col_actual:
+                actual_val = (
+                    parse_numeric(d_row.get(d_col_actual, 0)) or 0.0
                 )
+              else:
+                for val_d in d_row.values:
+                  parsed_val = parse_numeric(val_d)
+                  if parsed_val is not None and parsed_val > 0:
+                    actual_val = parsed_val
+                    break
+              dyelot_tbb_dict[d_k_obat.upper()] = {
+                  "code": d_k_obat,
+                  "name": d_name,
+                  "qty": actual_val,
+              }
+
+          # 1. Cek Item Berlebihan: Ada di Master MB, TAPI TIDAK ADA di Master Dyelot
+          for code_up, data_mb in mb_tbb_dict.items():
+            if code_up not in dyelot_tbb_dict:
+              item_full_label = (
+                  f"{data_mb['code']} {data_mb['name']}".strip()
+              )
+              issues.append(
+                  f"Item Berlebihan [{item_full_label}] {data_mb['qty']} GR"
+              )
+
+          # 2. Cek Item Kurang: Ada di Master Dyelot, TAPI TIDAK ADA di Master MB
+          # (Mengambil Kode & Nama secara murni dari kolom Kode Obat dan Obat Master Dyelot)
+          for code_up, data_dyelot in dyelot_tbb_dict.items():
+            if code_up not in mb_tbb_dict:
+              item_full_label = (
+                  f"{data_dyelot['code']} {data_dyelot['name']}".strip()
+              )
+              issues.append(
+                  f"Item Kurang [{item_full_label}] {data_dyelot['qty']} GR"
+              )
 
           if not has_any_tbb:
             group_summary_dict[kode_trans] = ""
           elif not issues:
             group_summary_dict[kode_trans] = "COMPLETE"
           else:
-            group_summary_dict[kode_trans] = ", ".join(issues)
+            group_summary_dict[kode_trans] = " | ".join(issues)
 
         # Proses Baris per Baris untuk Crosscheck Obat, Selisih Obat, & Satuan Selisih Obat
         for idx, row in master_df.iterrows():
@@ -794,7 +831,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               list_item_kurang_lebih_list.append("")
             continue
 
-          # Jika ada PIBC, jalankan audit obat per baris secara mendetail
+          # Jika ada PIBC, jalankan audit obat per baris
           matched_dyelot_rows = pd.DataFrame()
           if not dyelot_df.empty and d_col_dyelot1:
             mask = False
