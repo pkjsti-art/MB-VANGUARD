@@ -277,12 +277,19 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               col_unit = v
               break
 
-        # 1. Forward Fill untuk kolom utama
+        # Pastikan kolom Keterangan dan Keterangan Lain ada di dataframe
+        for c_name in ["Keterangan", "Keterangan Lain"]:
+          if c_name not in master_df.columns:
+            master_df[c_name] = ""
+
+        # 1. Forward Fill untuk kolom utama termasuk Keterangan & Keterangan Lain per Kode Transaksi
         target_ffill_cols = [
             "Gudang",
             "Kode",
             "Kode Barang Jadi",
             "Nama Barang Jadi",
+            "Keterangan",
+            "Keterangan Lain",
         ]
         for col in target_ffill_cols:
           if col in master_df.columns:
@@ -360,15 +367,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             master_df = master_df[cols]
         else:
           master_df["Qty BB Standar (GR)"] = ""
-
-        for c_name in [
-            "Keterangan",
-            "Keterangan Lain",
-            "Nama Barang Jadi",
-            col_kode_item,
-        ]:
-          if c_name and c_name not in master_df.columns:
-            master_df[c_name] = ""
 
         # 4. Pemetaan Cek Benang, Crosscheck Qty, dan Selisih per Kelompok Transaksi
         cek_jumlah_benang_list = []
@@ -597,7 +595,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               d_col_dyelot1 = c_d
               break
           if not d_col_dyelot1:
-            # Fallback jika tidak pas, cari yang mengandung kata DYELOT
             for c_d in dyelot_df.columns:
               if "DYELOT" in str(c_d).upper():
                 d_col_dyelot1 = c_d
@@ -651,10 +648,13 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               if pd.notna(val_c):
                 ket_text_combined += " " + str(val_c)
 
+          # Regex lebih fleksibel menangkap PIBC (dengan spasi/strip/garis miring)
           pibc_matches = re.findall(
-              r"PIBC-?[0-9A-Za-z]+", ket_text_combined, re.IGNORECASE
+              r"PIBC[\s\-\/]?[0-9A-Za-z\/\-_]+",
+              ket_text_combined,
+              re.IGNORECASE,
           )
-          pibc_list = [m.upper() for m in pibc_matches]
+          pibc_list = [m.upper().strip() for m in pibc_matches]
 
           if not pibc_list:
             crosscheck_obat_list.append("")
@@ -672,7 +672,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
                   dyelot_df[d_col_dyelot1]
                   .astype(str)
                   .str.upper()
-                  .str.contains(pibc_code, na=False)
+                  .str.contains(re.escape(pibc_code), na=False)
               )
             matched_dyelot_rows = dyelot_df[mask]
 
