@@ -386,6 +386,9 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             "ROLL",
             "TALI",
             "KUR",
+            "HTC",
+            "CONS",
+            "AVL",
         ]
         unique_kodes = master_df["Kode"].dropna().unique()
 
@@ -567,7 +570,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
         master_df["Selisih"] = selisih_list
         master_df["Satuan Selisih"] = satuan_selisih_list
 
-        # --- 5. AUDIT OBAT (CHEMICAL & DYESTUFF) - HANYA ITEM TBB (PER BARIS & COMPLETE SUMMARY) ---
+        # --- 5. AUDIT OBAT (CHEMICAL & DYESTUFF) - HANYA ITEM TBB & JIKA ADA PIBC ---
         crosscheck_obat_list = []
         selisih_obat_list = []
         satuan_selisih_obat_list = []
@@ -641,6 +644,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           )
           pibc_list = [m.upper().strip() for m in pibc_matches]
 
+          # JIKA TIDAK ADA PIBC DI KETERANGAN, SKIP (KOSONGKAN)
           if not has_dyelot_data or not pibc_list:
             group_summary_dict[kode_trans] = ""
             continue
@@ -742,7 +746,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             selisih_obat_list.append("")
             satuan_selisih_obat_list.append("")
 
-            # List Item Kurang/Lebih hanya ditampilkan 1 baris di baris pertama kelompok transaksi
             first_idx = (
                 master_df[master_df["Kode"] == kode_trans].index[0]
                 if kode_trans in master_df["Kode"].values
@@ -756,21 +759,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               list_item_kurang_lebih_list.append("")
             continue
 
-          # Jika item adalah TBB, jalankan audit per baris secara mendetail
-          if not has_dyelot_data:
-            crosscheck_obat_list.append("INCORRECT")
-            qty_mb_std = parse_numeric(row.get("Qty BB Standar (GR)", 0)) or 0.0
-            selisih_obat_list.append(qty_mb_std)
-            satuan_selisih_obat_list.append("GR")
-            first_idx = master_df[master_df["Kode"] == kode_trans].index[0]
-            if idx == first_idx:
-              list_item_kurang_lebih_list.append(
-                  group_summary_dict.get(kode_trans, "COMPLETE")
-              )
-            else:
-              list_item_kurang_lebih_list.append("")
-            continue
-
+          # Cek apakah transaksi ini memiliki PIBC di Keterangan / Keterangan Lain
           ket_text_combined = ""
           for col_c in master_df.columns:
             col_c_up = str(col_c).strip().upper()
@@ -786,12 +775,17 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           )
           pibc_list = [m.upper().strip() for m in pibc_matches]
 
-          if not pibc_list:
-            crosscheck_obat_list.append("INCORRECT")
-            qty_mb_std = parse_numeric(row.get("Qty BB Standar (GR)", 0)) or 0.0
-            selisih_obat_list.append(qty_mb_std)
-            satuan_selisih_obat_list.append("GR")
-            first_idx = master_df[master_df["Kode"] == kode_trans].index[0]
+          # Jika TIDAK ADA PIBC, SKIP (kosongkan semua kolom audit obat untuk baris ini)
+          if not pibc_list or not has_dyelot_data:
+            crosscheck_obat_list.append("")
+            selisih_obat_list.append("")
+            satuan_selisih_obat_list.append("")
+
+            first_idx = (
+                master_df[master_df["Kode"] == kode_trans].index[0]
+                if kode_trans in master_df["Kode"].values
+                else -1
+            )
             if idx == first_idx:
               list_item_kurang_lebih_list.append(
                   group_summary_dict.get(kode_trans, "")
@@ -800,6 +794,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               list_item_kurang_lebih_list.append("")
             continue
 
+          # Jika ada PIBC, jalankan audit obat per baris secara mendetail
           matched_dyelot_rows = pd.DataFrame()
           if not dyelot_df.empty and d_col_dyelot1:
             mask = False
