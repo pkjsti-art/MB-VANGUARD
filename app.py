@@ -658,24 +658,21 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           )
           is_first_yarn_row = idx == first_yarn_idx_dict.get(kode_trans)
 
-          # PENEMPATAN TEKS KODE BENANG & SUMMARY DI BARIS BENANG PERTAMA ATAU BARIS PERTAMA
-          if is_first_yarn_row:
-            cek_jumlah_benang_list.append(
-                kode_benang_mapping.get(kode_trans, "")
-            )
-            list_item_kurang_lebih_list.append(
-                group_summary_dict.get(kode_trans, "")
-            )
-          elif idx == first_idx and kode_trans not in first_yarn_idx_dict:
-            cek_jumlah_benang_list.append(
-                kode_benang_mapping.get(kode_trans, "")
-            )
+          # ATURAN 1: 'List Item Kurang/Lebih' HANYA dan SELALU di baris pertama kelompok (first_idx)
+          if idx == first_idx:
             list_item_kurang_lebih_list.append(
                 group_summary_dict.get(kode_trans, "")
             )
           else:
-            cek_jumlah_benang_list.append("")
             list_item_kurang_lebih_list.append("")
+
+          # ATURAN 2: 'Cek jumlah benang' HANYA muncul di baris benang pertama (is_first_yarn_row)
+          if is_first_yarn_row:
+            cek_jumlah_benang_list.append(
+                kode_benang_mapping.get(kode_trans, "")
+            )
+          else:
+            cek_jumlah_benang_list.append("")
 
           # Hanya proses gudang Mesin Dyeing & Lab & Rnd
           if not ("mesin dyeing" in gudang or "lab & rnd" in gudang):
@@ -850,17 +847,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           satuan_selisih_list.append(sat_val)
 
         master_df["Cek jumlah benang"] = cek_jumlah_benang_list
-        if "Kode" in master_df.columns:
-          master_df["Cek jumlah benang"] = master_df["Cek jumlah benang"].replace(
-              "", pd.NA
-          )
-          master_df["Cek jumlah benang"] = master_df.groupby("Kode")[
-              "Cek jumlah benang"
-          ].ffill()
-          master_df["Cek jumlah benang"] = master_df[
-              "Cek jumlah benang"
-          ].fillna("")
-
         master_df["Crosscheck Qty"] = crosscheck_qty_list
         master_df["Selisih"] = selisih_list
         master_df["Satuan Selisih"] = satuan_selisih_list
@@ -965,7 +951,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
 
       st.markdown("---")
 
-      status_filter = filter_val = st.selectbox(
+      status_filter = st.selectbox(
           "🔍 Filter Tampilan Berdasarkan Status:",
           [
               "Tampilkan Semua",
