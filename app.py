@@ -293,7 +293,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           if c_name not in master_df.columns:
             master_df[c_name] = ""
 
-        # 1. Forward Fill untuk kolom utama termasuk Keterangan & Keterangan Lain per Kode Transaksi
+        # Forward Fill untuk kolom utama per Kode Transaksi
         target_ffill_cols = [
             "Gudang",
             "Kode",
@@ -329,7 +329,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             return pd.to_numeric(str(val), errors="coerce")
 
 
-        # 2. QTY Target Standar (GR)
+        # QTY Target Standar (GR)
         if col_target_qty and col_target_unit:
           master_df["QTY Target Standar (GR)"] = master_df.apply(
               lambda row: (
@@ -356,7 +356,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
         else:
           master_df["QTY Target Standar (GR)"] = ""
 
-        # 3. Qty BB Standar (GR)
+        # Qty BB Standar (GR)
         if col_qty and col_unit:
           master_df["Qty BB Standar (GR)"] = master_df.apply(
               lambda row: (
@@ -435,6 +435,13 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             continue
 
           first_row_sub = sub_df.iloc[0]
+          gudang_row_val = str(first_row_sub.get("Gudang", "")).strip().lower()
+
+          # Audit obat hanya dijalankan jika gudang Mesin Dyeing atau Lab & Rnd
+          if not ("mesin dyeing" in gudang_row_val or "lab & rnd" in gudang_row_val):
+            group_summary_dict[kode_trans] = ""
+            continue
+
           ket_text_combined = ""
           for col_c in master_df.columns:
             col_c_up = str(col_c).strip().upper()
@@ -561,7 +568,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           else:
             group_summary_dict[kode_trans] = " | ".join(issues)
 
-        # Pre-compute first yarn item row index per transaction group for group-level yarn check
+        # Mapping item benang & pencarian index baris benang pertama KHUSUS Mesin Dyeing & Lab & Rnd
         first_yarn_idx_dict = {}
         kode_benang_mapping = {}
 
@@ -588,25 +595,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
                 kode_benang_mapping[kode_trans] = "Tidak Ada TWP/MWP/TBM"
             else:
               kode_benang_mapping[kode_trans] = ""
-          elif "softcone" in gudang_raw:
-            if col_kode_item:
-              benang_sub = sub_df[
-                  sub_df[col_kode_item]
-                  .astype(str)
-                  .str.startswith(("TBB", "MBB", "MWP", "TWP", "TBM"), na=False)
-              ]
-              if not benang_sub.empty:
-                unique_b = ", ".join(
-                    benang_sub[col_kode_item].astype(str).unique()
-                )
-                kode_benang_mapping[kode_trans] = unique_b
-                first_yarn_idx_dict[kode_trans] = benang_sub.index[0]
-              else:
-                kode_benang_mapping[kode_trans] = "Tidak Ada TWP/MWP/TBM"
-            else:
-              kode_benang_mapping[kode_trans] = ""
-          else:
-            kode_benang_mapping[kode_trans] = ""
 
         # --- ITERASI UTAMA PER BARIS UNTUK MENGISI KOLOM UTAMA ---
         cek_jumlah_benang_list = []
@@ -648,7 +636,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               else -1
           )
 
-          # Cek jumlah benang & list item kurang/lebih ditaruh di baris pertama kelompok transaksi
           if idx == first_idx:
             cek_jumlah_benang_list.append(
                 kode_benang_mapping.get(kode_trans, "")
@@ -660,11 +647,8 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             cek_jumlah_benang_list.append("")
             list_item_kurang_lebih_list.append("")
 
-          if "dyeing sti" in gudang:
-            item_val_upper = item_code.upper()
-            valid_prefixes = ("TBB", "MBB", "MWP", "TWP", "TBM")
-            if item_val_upper.startswith(valid_prefixes):
-              pass
+          # Hanya proses gudang Mesin Dyeing & Lab & Rnd untuk crosscheck benang & obat
+          if not ("mesin dyeing" in gudang or "lab & rnd" in gudang):
             crosscheck_qty_list.append("")
             selisih_list.append("")
             satuan_selisih_list.append("")
@@ -677,7 +661,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           sel_val = ""
           sat_val = ""
 
-          # A. Jika ini adalah baris benang pertama untuk pengecekan kelompok (Group-Level Qty Check)
+          # A. Cek Benang (Group-Level Qty Check) di baris item benang pertama
           if is_first_yarn_row:
             target_val = row.get("QTY Target Standar (GR)", "")
             if (
@@ -687,30 +671,15 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             ):
               target_qty = round(float(target_val), 0)
               sub_df = master_df[master_df["Kode"] == kode_trans]
-              if "softcone" in gudang:
-                benang_sub = (
-                    sub_df[
-                        sub_df[col_kode_item]
-                        .astype(str)
-                        .str.startswith(
-                            ("TBB", "MBB", "TWP", "MWP", "TBM"), na=False
-                        )
-                    ]
-                    if col_kode_item
-                    else pd.DataFrame()
-                )
-              elif "mesin dyeing" in gudang or "lab & rnd" in gudang:
-                benang_sub = (
-                    sub_df[
-                        sub_df[col_kode_item]
-                        .astype(str)
-                        .str.startswith(("TWP", "MWP", "TBM"), na=False)
-                    ]
-                    if col_kode_item
-                    else pd.DataFrame()
-                )
-              else:
-                benang_sub = pd.DataFrame()
+              benang_sub = (
+                  sub_df[
+                      sub_df[col_kode_item]
+                      .astype(str)
+                      .str.startswith(("TWP", "MWP", "TBM"), na=False)
+                  ]
+                  if col_kode_item
+                  else pd.DataFrame()
+              )
 
               if (
                   not benang_sub.empty
@@ -749,7 +718,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
                 sel_val = diff_group
                 sat_val = "GR"
 
-          # B. Jika ini adalah baris obat TBB untuk audit item (Item-Level Medicine Audit)
+          # B. Cek Obat TBB (Item-Level Medicine Audit) jika ada PIBC dan Dyelot
           elif is_tbb_item and has_dyelot_data:
             ket_text_combined = ""
             for col_c in master_df.columns:
