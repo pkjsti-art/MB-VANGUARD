@@ -216,7 +216,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
 
   if st.session_state.raw_master is None:
     st.warning(
-        "⚠️ Belum ada data Master Gudang yang di-upload. Silakan lakukan upload"
+        "⚠️️ Belum ada data Master Gudang yang di-upload. Silakan lakukan upload"
         " di menu **Master Data (Upload)** terlebih dahulu!"
     )
   else:
@@ -337,7 +337,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             return pd.to_numeric(str(val), errors="coerce")
 
 
-        # QTY Target Standar (GR) - Tampilan Asli (Tidak di-forward fill)
+        # QTY Target Standar (GR) - TAMPILAN ASLI (Tidak di-forward fill)
         if col_target_qty and col_target_unit:
           master_df["QTY Target Standar (GR)"] = master_df.apply(
               lambda row: (
@@ -364,7 +364,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
         else:
           master_df["QTY Target Standar (GR)"] = ""
 
-        # KOLOM BANTU INTERNAL (Di-ffill khusus untuk backend kalkulasi tanpa merusak tampilan asli)
+        # KOLOM BANTU INTERNAL (Di-ffill khusus untuk backend kalkulasi tanpa merusak tampilan asli kolom QTY Target Standar)
         if "Kode" in master_df.columns and "QTY Target Standar (GR)" in master_df.columns:
           master_df["_temp_target_gr"] = master_df["QTY Target Standar (GR)"].copy()
           master_df["_temp_target_gr"] = master_df.groupby("Kode")[
@@ -597,7 +597,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
 
           if "mesin dyeing" in gudang_raw or "lab & rnd" in gudang_raw:
             if col_kode_item:
-              # Menggunakan .str.strip().str.upper() agar tahan terhadap spasi/huruf kecil di ERP
               benang_sub = sub_df[
                   sub_df[col_kode_item]
                   .astype(str)
@@ -610,7 +609,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
                     benang_sub[col_kode_item].astype(str).str.strip().unique()
                 )
                 kode_benang_mapping[kode_trans] = unique_b
-                # Mengambil index baris item benang PERTAMA (bisa di baris ke-2, ke-3, dst)
                 first_yarn_idx_dict[kode_trans] = benang_sub.index[0]
               else:
                 kode_benang_mapping[kode_trans] = "Tidak Ada TWP/MWP/TBM"
@@ -666,15 +664,10 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           else:
             list_item_kurang_lebih_list.append("")
 
-          # ATURAN 2: 'Cek jumlah benang' HANYA muncul di baris benang pertama (is_first_yarn_row)
-          if is_first_yarn_row:
-            cek_jumlah_benang_list.append(
-                kode_benang_mapping.get(kode_trans, "")
-            )
-          else:
-            cek_jumlah_benang_list.append("")
+          # ATURAN 2: 'Cek jumlah benang' di-forward fill ke seluruh baris dalam kelompok transaksi tersebut
+          cek_jumlah_benang_list.append(kode_benang_mapping.get(kode_trans, ""))
 
-          # Hanya proses gudang Mesin Dyeing & Lab & Rnd
+          # Hanya proses gudang Mesin Dyeing & Lab & Rnd untuk Crosscheck Qty
           if not ("mesin dyeing" in gudang or "lab & rnd" in gudang):
             crosscheck_qty_list.append("")
             selisih_list.append("")
@@ -687,7 +680,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           sel_val = ""
           sat_val = ""
 
-          # A. Cek Benang (Group-Level Qty Check) - BERJALAN DI BARIS BENANG PERTAMA (BAIK DI ATAS MAUPUN DI BAWAH)
+          # A. Cek Benang (Group-Level Qty Check) - BERJALAN DI BARIS BENANG (BAIK DI ATAS, TENGAH, MAUPUN DI BAWAH)
           if is_first_yarn_row:
             target_val = row.get("_temp_target_gr", "")
             if (
