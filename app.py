@@ -997,7 +997,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               processed_df["Kode"].isin(kodes_wajar)
           ]
 
-          # --- LOGIKA STRICT: FILTER INCORRECT BENANG SESUAI ATURAN GUDANG ---
+          # --- LOGIKA KELOMPOK PENUH UNTUK SHEET INCORRECT BENANG ---
           col_map_dl = {str(c).strip().upper(): c for c in processed_df.columns}
           c_kode_item = None
           for k, v in col_map_dl.items():
@@ -1010,33 +1010,34 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
                 c_kode_item = v
                 break
 
-          def filter_incorrect_benang_simple(row):
-            gudang_raw = str(row.get("Gudang", ""))
-            wh_type = get_warehouse_type(gudang_raw)
-            item_val = (
-                str(row.get(c_kode_item, "")).strip().upper()
-                if c_kode_item
-                else ""
-            )
-            cc_val = str(row.get("Crosscheck Qty", "")).strip()
-
-            # 1. Baris harus berstatus "INCORRECT"
-            if cc_val != "INCORRECT":
-              return False
-
-            # 2. Aturan Benang Murni berdasarkan Gudang:
-            # - Softcone: TBB, MBB, MWP, TWP, TBM (TBB di sini adalah benang)
-            # - Mesin Dyeing, Lab, & RND: TWP, MWP, TBM
+          def is_benang_item(item_val, wh_type):
+            item_up = str(item_val).strip().upper()
             if wh_type == "softcone":
-              return item_val.startswith(("TBB", "MBB", "MWP", "TWP", "TBM"))
+              return item_up.startswith(("TBB", "MBB", "MWP", "TWP", "TBM"))
             elif wh_type == "mesin_dyeing_lab":
-              return item_val.startswith(("TWP", "MWP", "TBM"))
-            
+              return item_up.startswith(("TWP", "MWP", "TBM"))
             return False
 
-          # Filter baris item benang yang berstatus INCORRECT murni per baris
+          # Cari kode transaksi yang memiliki BENANG dengan status INCORRECT
+          kodes_benang_incorrect = set()
+          for kode_trans, group in processed_df.groupby("Kode"):
+            if pd.isna(kode_trans) or kode_trans == "":
+              continue
+            gudang_raw = str(group.iloc[0].get("Gudang", ""))
+            wh_type = get_warehouse_type(gudang_raw)
+
+            for _, row in group.iterrows():
+              item_val = row.get(c_kode_item, "") if c_kode_item else ""
+              cc_val = str(row.get("Crosscheck Qty", "")).strip()
+
+              # Jika baris ini adalah benang DAN status crosscheck-nya INCORRECT
+              if is_benang_item(item_val, wh_type) and cc_val == "INCORRECT":
+                kodes_benang_incorrect.add(kode_trans)
+                break
+
+          # Ambil seluruh baris dari kelompok transaksi tersebut (satu kelompok penuh)
           df_inc_benang_full = processed_df[
-              processed_df.apply(filter_incorrect_benang_simple, axis=1)
+              processed_df["Kode"].isin(kodes_benang_incorrect)
           ]
 
           # Simpan ke masing-masing sheet Excel
