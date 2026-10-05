@@ -287,7 +287,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               break
         if not col_target_unit:
           for k, v in col_mapping_std.items():
-            if "UNIT" in k and v != col_target_unit:
+            if "UNIT" in k and v != col_unit:
               col_target_unit = v
               break
         if not col_qty:
@@ -960,6 +960,22 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
       with col_dl2:
         output_buffer_inc = io.BytesIO()
         with pd.ExcelWriter(output_buffer_inc, engine="openpyxl") as writer:
+          # Deteksi ulang nama kolom kode item dengan aman di dalam tombol download
+          col_mapping_dl = {}
+          for c in processed_df.columns:
+            col_mapping_dl[str(c).strip().upper()] = c
+
+          col_kode_item_dl = None
+          for k, v in col_mapping_dl.items():
+            if "KODE" in k and ("ITEM" in k or "BARANG" in k):
+              col_kode_item_dl = v
+              break
+          if not col_kode_item_dl:
+            for k, v in col_mapping_dl.items():
+              if "KODE" in k:
+                col_kode_item_dl = v
+                break
+
           kodes_incorrect = processed_df[
               (processed_df["Crosscheck Qty"] == "INCORRECT")
               & (processed_df["Kode"].notna())
@@ -992,7 +1008,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               continue
             gudang_raw = str(sub_df.iloc[0].get("Gudang", "")).strip().lower()
 
-            # Tentukan prefix kode benang berdasarkan gudang
             if "softcone" in gudang_raw:
               valid_prefixes_benang = ("TWP", "MWP", "TBM", "TBB", "MBB")
             elif "mesin dyeing" in gudang_raw or "lab & rnd" in gudang_raw:
@@ -1000,14 +1015,13 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             else:
               valid_prefixes_benang = ()
 
-            if not valid_prefixes_benang or not col_kode_item:
+            if not valid_prefixes_benang or not col_kode_item_dl:
               continue
 
-            # Cek apakah dalam kelompok ini ada baris benang yang status Crosscheck Qty-nya "INCORRECT"
             has_incorrect_yarn = False
             for _, row_item in sub_df.iterrows():
               item_c = (
-                  str(row_item.get(col_kode_item, "")).strip().upper()
+                  str(row_item.get(col_kode_item_dl, "")).strip().upper()
               )
               cc_qty = str(row_item.get("Crosscheck Qty", "")).strip()
               if (
