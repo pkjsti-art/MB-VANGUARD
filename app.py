@@ -385,7 +385,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               and str(row.get(col_kode_item)).strip() != ""
               and "TOTAL" not in str(row.get(col_kode_item)).upper()
               and str(row.get(col_kode_item)).strip() != "Overhead Cost"
-              and parse_numeric(row.get(col_qty)) is not None
               else "",
               axis=1,
           )
@@ -598,17 +597,20 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
 
           if "mesin dyeing" in gudang_raw or "lab & rnd" in gudang_raw:
             if col_kode_item:
+              # Menggunakan .str.strip().str.upper() agar tahan terhadap spasi/huruf kecil di ERP
               benang_sub = sub_df[
                   sub_df[col_kode_item]
                   .astype(str)
+                  .str.strip()
+                  .str.upper()
                   .str.startswith(("TWP", "MWP", "TBM"), na=False)
               ]
               if not benang_sub.empty:
                 unique_b = ", ".join(
-                    benang_sub[col_kode_item].astype(str).unique()
+                    benang_sub[col_kode_item].astype(str).str.strip().unique()
                 )
                 kode_benang_mapping[kode_trans] = unique_b
-                # Mengambil index baris item benang PERTAMA (entah di atas atau di bawah)
+                # Mengambil index baris item benang PERTAMA (bisa di baris ke-2, ke-3, dst)
                 first_yarn_idx_dict[kode_trans] = benang_sub.index[0]
               else:
                 kode_benang_mapping[kode_trans] = "Tidak Ada TWP/MWP/TBM"
@@ -654,8 +656,17 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               if kode_trans in master_df["Kode"].values
               else -1
           )
+          is_first_yarn_row = idx == first_yarn_idx_dict.get(kode_trans)
 
-          if idx == first_idx:
+          # PENEMPATAN TEKS KODE BENANG & SUMMARY DI BARIS BENANG PERTAMA ATAU BARIS PERTAMA
+          if is_first_yarn_row:
+            cek_jumlah_benang_list.append(
+                kode_benang_mapping.get(kode_trans, "")
+            )
+            list_item_kurang_lebih_list.append(
+                group_summary_dict.get(kode_trans, "")
+            )
+          elif idx == first_idx and kode_trans not in first_yarn_idx_dict:
             cek_jumlah_benang_list.append(
                 kode_benang_mapping.get(kode_trans, "")
             )
@@ -673,16 +684,14 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             satuan_selisih_list.append("")
             continue
 
-          is_first_yarn_row = idx == first_yarn_idx_dict.get(kode_trans)
           is_tbb_item = item_code.upper().startswith("TBB")
 
           cc_val = ""
           sel_val = ""
           sat_val = ""
 
-          # A. Cek Benang (Group-Level Qty Check) - BERJALAN TERUS DI BARIS BENANG PERTAMA (BAIK ADA ATAUPUN TIDAK ADA PIBC)
+          # A. Cek Benang (Group-Level Qty Check) - BERJALAN DI BARIS BENANG PERTAMA (BAIK DI ATAS MAUPUN DI BAWAH)
           if is_first_yarn_row:
-            # Menggunakan kolom temporary _temp_target_gr untuk membaca nilai meski di baris bawah
             target_val = row.get("_temp_target_gr", "")
             if (
                 target_val != ""
@@ -695,6 +704,8 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
                   sub_df[
                       sub_df[col_kode_item]
                       .astype(str)
+                      .str.strip()
+                      .str.upper()
                       .str.startswith(("TWP", "MWP", "TBM"), na=False)
                   ]
                   if col_kode_item
@@ -755,7 +766,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             )
             pibc_list = [m.upper().strip() for m in pibc_matches]
 
-            # JIKA TIDAK ADA PIBC, PENGECEKAN OBAT DI-SKIP (DIBIARKAN KOSONG)
             if pibc_list:
               matched_dyelot_rows = pd.DataFrame()
               if not dyelot_df.empty and d_col_dyelot1:
@@ -955,7 +965,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
 
       st.markdown("---")
 
-      status_filter = st.selectbox(
+      status_filter = filter_val = st.selectbox(
           "🔍 Filter Tampilan Berdasarkan Status:",
           [
               "Tampilkan Semua",
