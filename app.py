@@ -104,6 +104,17 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# --- HELPER: DETEKSI GUDANG FLEKSIBEL ---
+def get_warehouse_type(gudang_str):
+    g = str(gudang_str).strip().lower()
+    if "dyeing sti" in g:
+        return "dyeing_sti"
+    elif "soft" in g or "cone" in g:
+        return "softcone"
+    elif "dyeing" in g or "lab" in g or "rnd" in g:
+        return "mesin_dyeing_lab"
+    return "other"
+
 # --- SIDEBAR NAVIGASI ---
 st.sidebar.markdown("### 🧭 Menu Navigasi MB-VANGUARD")
 menu_pilihan = st.sidebar.radio(
@@ -401,9 +412,10 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           sub_df = master_df[master_df["Kode"] == kode_trans]
           if sub_df.empty:
             continue
-          gudang_raw = str(sub_df.iloc[0].get("Gudang", "")).strip().lower()
+          gudang_raw = str(sub_df.iloc[0].get("Gudang", ""))
+          wh_type = get_warehouse_type(gudang_raw)
 
-          if "mesin dyeing" in gudang_raw or "lab & rnd" in gudang_raw:
+          if wh_type == "mesin_dyeing_lab":
             if col_kode_item:
               benang_sub = sub_df[
                   sub_df[col_kode_item]
@@ -419,8 +431,9 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
                 kode_benang_mapping[kode_trans] = "Tidak Ada TWP/MWP/TBM"
             else:
               kode_benang_mapping[kode_trans] = ""
-          elif "softcone" in gudang_raw:
+          elif wh_type == "softcone":
             if col_kode_item:
+              # TBB dikembalikan sebagai benang untuk Softcone
               benang_sub = sub_df[
                   sub_df[col_kode_item]
                   .astype(str)
@@ -432,7 +445,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
                 )
                 kode_benang_mapping[kode_trans] = unique_b
               else:
-                kode_benang_mapping[kode_trans] = "Tidak Ada TWP/MWP/TBM"
+                kode_benang_mapping[kode_trans] = "Tidak Ada TBB/MBB/MWP/TWP/TBM"
             else:
               kode_benang_mapping[kode_trans] = ""
           else:
@@ -458,12 +471,13 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           sub_df = master_df[master_df["Kode"] == kode_trans]
           if sub_df.empty:
             continue
-          gudang = str(sub_df.iloc[0].get("Gudang", "")).strip().lower()
+          gudang_raw = str(sub_df.iloc[0].get("Gudang", ""))
+          wh_type = get_warehouse_type(gudang_raw)
           first_row = sub_df.iloc[0]
 
-          if "softcone" in gudang:
-            valid_prefixes = ("TBB", "MBB", "TWP", "MWP", "TBM")
-          elif "mesin dyeing" in gudang or "lab & rnd" in gudang:
+          if wh_type == "softcone":
+            valid_prefixes = ("TBB", "MBB", "MWP", "TWP", "TBM")
+          elif wh_type == "mesin_dyeing_lab":
             valid_prefixes = ("TWP", "MWP", "TBM")
           else:
             valid_prefixes = ()
@@ -588,10 +602,9 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             continue
 
           first_row_sub = sub_df.iloc[0]
-          gudang_raw = str(first_row_sub.get("Gudang", "")).strip().lower()
-          is_valid_warehouse_for_dyelot = (
-              "mesin dyeing" in gudang_raw or "lab & rnd" in gudang_raw
-          )
+          gudang_raw = str(first_row_sub.get("Gudang", ""))
+          wh_type = get_warehouse_type(gudang_raw)
+          is_valid_warehouse_for_dyelot = (wh_type == "mesin_dyeing_lab")
 
           ket_text_combined = ""
           for col_c in master_df.columns:
@@ -734,10 +747,9 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               str(row.get(col_kode_item, "")).strip() if col_kode_item else ""
           )
           kode_trans = str(row.get("Kode", ""))
-          gudang = str(row.get("Gudang", "")).strip().lower()
-          is_valid_warehouse_for_dyelot = (
-              "mesin dyeing" in gudang or "lab & rnd" in gudang
-          )
+          gudang_raw = str(row.get("Gudang", ""))
+          wh_type = get_warehouse_type(gudang_raw)
+          is_valid_warehouse_for_dyelot = (wh_type == "mesin_dyeing_lab")
 
           if not kode_trans or kode_trans == "nan":
             cek_jumlah_benang_list.append("")
@@ -748,7 +760,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             continue
 
           # Handle khusus Gudang Dyeing STI
-          if "dyeing sti" in gudang:
+          if wh_type == "dyeing_sti":
             item_val_upper = item_code.upper()
             valid_prefixes_sti = ("TBB", "MBB", "MWP", "TWP", "TBM")
             if item_val_upper.startswith(valid_prefixes_sti):
@@ -978,7 +990,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               & (processed_df["Kode"] != "")
           ]["Kode"].unique()
 
-          # --- LOGIKA FINAL KELOMPOK BENANG INCORRECT ---
+          # --- LOGIKA FINAL KELOMPOK BENANG INCORRECT (DENGAN HELPER GUDANG FLEKSIBEL) ---
           col_map_dl = {str(c).strip().upper(): c for c in processed_df.columns}
           c_kode_item = None
           for k, v in col_map_dl.items():
@@ -992,25 +1004,32 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
                 break
 
           def filter_incorrect_benang(row):
-              gudang_val = str(row.get("Gudang", "")).strip().lower()
-              item_val = str(row.get(c_kode_item, "")).strip().upper() if c_kode_item else ""
-              cc_val = str(row.get("Crosscheck Qty", "")).strip()
-              
-              # Syarat: Baris item benang harus bernilai INCORRECT (bukan CORRECT)
-              if cc_val != "INCORRECT":
-                  return False
-              
-              if "softcone" in gudang_val:
-                  if item_val.startswith(("TBB", "MBB", "TWP", "MWP", "TBM")):
-                      return True
-              elif "mesin dyeing" in gudang_val or "lab & rnd" in gudang_val:
-                  if item_val.startswith(("TWP", "MWP", "TBM")):
-                      return True
+            gudang_raw = str(row.get("Gudang", ""))
+            wh_type = get_warehouse_type(gudang_raw)
+            item_val = (
+                str(row.get(c_kode_item, "")).strip().upper()
+                if c_kode_item
+                else ""
+            )
+            cc_val = str(row.get("Crosscheck Qty", "")).strip()
+
+            # Syarat: Crosscheck Qty baris benang tersebut harus bernilai INCORRECT
+            if cc_val != "INCORRECT":
               return False
+
+            if wh_type == "softcone":
+              if item_val.startswith(("TBB", "MBB", "MWP", "TWP", "TBM")):
+                return True
+            elif wh_type == "mesin_dyeing_lab":
+              if item_val.startswith(("TWP", "MWP", "TBM")):
+                return True
+            return False
 
           mask_inc_benang = processed_df.apply(filter_incorrect_benang, axis=1)
           kodes_incorrect_benang = processed_df[
-              mask_inc_benang & processed_df["Kode"].notna() & (processed_df["Kode"] != "")
+              mask_inc_benang
+              & processed_df["Kode"].notna()
+              & (processed_df["Kode"] != "")
           ]["Kode"].unique()
 
           df_inc_normal_full = processed_df[
