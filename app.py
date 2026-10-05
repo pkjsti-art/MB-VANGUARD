@@ -426,11 +426,10 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             ["ACTUAL", "AKTUAL", "QTY ACTUAL", "QTY"]
         )
 
-        # Pre-compute group-level summary untuk kolom 'List Item Kurang/Lebih'
+        unique_kodes = master_df["Kode"].dropna().unique()
         group_summary_dict = {}
-        unique_kodes_audit = master_df["Kode"].dropna().unique()
 
-        for kode_trans in unique_kodes_audit:
+        for kode_trans in unique_kodes:
           sub_df = master_df[master_df["Kode"] == kode_trans]
           if sub_df.empty:
             continue
