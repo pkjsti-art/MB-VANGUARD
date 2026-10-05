@@ -978,7 +978,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               & (processed_df["Kode"] != "")
           ]["Kode"].unique()
 
-          # --- Perbaikan Logika Sheet "incorrect benang" (Wajib Crosscheck Qty == "INCORRECT") ---
+          # --- LOGIKA FINAL KELOMPOK BENANG INCORRECT ---
           col_map_dl = {str(c).strip().upper(): c for c in processed_df.columns}
           c_kode_item = None
           for k, v in col_map_dl.items():
@@ -996,7 +996,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               item_val = str(row.get(c_kode_item, "")).strip().upper() if c_kode_item else ""
               cc_val = str(row.get("Crosscheck Qty", "")).strip()
               
-              # SYARAT UTAMA: Crosscheck Qty harus benar-benar "INCORRECT"
+              # Syarat: Baris item benang harus bernilai INCORRECT (bukan CORRECT)
               if cc_val != "INCORRECT":
                   return False
               
