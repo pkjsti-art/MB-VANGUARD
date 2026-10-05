@@ -997,7 +997,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               processed_df["Kode"].isin(kodes_wajar)
           ]
 
-          # --- LOGIKA KELOMPOK PENUH UNTUK SHEET INCORRECT BENANG ---
+          # --- LOGIKA STRICT: HANYA MASUK JIKA BENANGNYA BENAR-BENAR INCORRECT ---
           col_map_dl = {str(c).strip().upper(): c for c in processed_df.columns}
           c_kode_item = None
           for k, v in col_map_dl.items():
@@ -1018,7 +1018,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               return item_up.startswith(("TWP", "MWP", "TBM"))
             return False
 
-          # Cari kode transaksi yang memiliki BENANG dengan status INCORRECT
+          # Cari kode transaksi yang BENAR-BENAR BENANGNYA bernilai INCORRECT
           kodes_benang_incorrect = set()
           for kode_trans, group in processed_df.groupby("Kode"):
             if pd.isna(kode_trans) or kode_trans == "":
@@ -1030,12 +1030,12 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               item_val = row.get(c_kode_item, "") if c_kode_item else ""
               cc_val = str(row.get("Crosscheck Qty", "")).strip()
 
-              # Jika baris ini adalah benang DAN status crosscheck-nya INCORRECT
+              # Syarat mutlak: Harus item benang SESUAI GUDANGNYA DAN statusnya INCORRECT
               if is_benang_item(item_val, wh_type) and cc_val == "INCORRECT":
                 kodes_benang_incorrect.add(kode_trans)
-                break
+                break  # Cukup temukan satu benang yang benar-benar incorrect dalam kelompok ini
 
-          # Ambil seluruh baris dari kelompok transaksi tersebut (satu kelompok penuh)
+          # Ambil seluruh baris dari kelompok transaksi yang benangnya benar-benar incorrect
           df_inc_benang_full = processed_df[
               processed_df["Kode"].isin(kodes_benang_incorrect)
           ]
