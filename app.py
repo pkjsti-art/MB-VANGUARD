@@ -104,17 +104,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# --- HELPER: DETEKSI GUDANG FLEKSIBEL ---
-def get_warehouse_type(gudang_str):
-    g = str(gudang_str).strip().lower()
-    if "dyeing sti" in g:
-        return "dyeing_sti"
-    elif "soft" in g or "cone" in g:
-        return "softcone"
-    elif "dyeing" in g or "lab" in g or "rnd" in g:
-        return "mesin_dyeing_lab"
-    return "other"
-
 # --- SIDEBAR NAVIGASI ---
 st.sidebar.markdown("### 🧭 Menu Navigasi MB-VANGUARD")
 menu_pilihan = st.sidebar.radio(
@@ -264,23 +253,13 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
         col_qty = None
         col_unit = None
 
-        # Deteksi Kolom Kode Item (Mendukung 'KODE ITEM', 'KODE', dll)
         for k, v in col_mapping_std.items():
-          if (
-              ("KODE" in k or "CODE" in k)
-              and ("ITEM" in k or "BARANG" in k or "MATERIAL" in k)
-              and "BARANG JADI" not in k
-          ):
+          if "KODE" in k and ("ITEM" in k or "BARANG" in k):
             col_kode_item = v
-            break
-
-        for k, v in col_mapping_std.items():
-          if ("NAMA" in k or "DESKRIPSI" in k or "URAIAN" in k) and (
+          elif ("NAMA" in k or "DESKRIPSI" in k or "URAIAN" in k) and (
               "ITEM" in k or "BARANG" in k
           ):
-            if "BARANG JADI" not in k:
-              col_nama_item = v
-              break
+            col_nama_item = v
           elif "TARGET" in k and "QTY" in k:
             col_target_qty = v
           elif "TARGET" in k and "UNIT" in k:
@@ -292,17 +271,13 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
 
         if not col_kode_item:
           for k, v in col_mapping_std.items():
-            if (
-                ("KODE" in k or "CODE" in k)
-                and "JADI" not in k
-                and "TRANS" not in k
-            ):
+            if "KODE" in k:
               col_kode_item = v
               break
         if not col_nama_item:
           for k, v in col_mapping_std.items():
             if "NAMA" in k or "BARANG" in k:
-              if v != col_kode_item and "JADI" not in k:
+              if v != col_kode_item:
                 col_nama_item = v
                 break
         if not col_target_qty:
@@ -426,10 +401,9 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           sub_df = master_df[master_df["Kode"] == kode_trans]
           if sub_df.empty:
             continue
-          gudang_raw = str(sub_df.iloc[0].get("Gudang", ""))
-          wh_type = get_warehouse_type(gudang_raw)
+          gudang_raw = str(sub_df.iloc[0].get("Gudang", "")).strip().lower()
 
-          if wh_type == "mesin_dyeing_lab":
+          if "mesin dyeing" in gudang_raw or "lab & rnd" in gudang_raw:
             if col_kode_item:
               benang_sub = sub_df[
                   sub_df[col_kode_item]
@@ -445,7 +419,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
                 kode_benang_mapping[kode_trans] = "Tidak Ada TWP/MWP/TBM"
             else:
               kode_benang_mapping[kode_trans] = ""
-          elif wh_type == "softcone":
+          elif "softcone" in gudang_raw:
             if col_kode_item:
               benang_sub = sub_df[
                   sub_df[col_kode_item]
@@ -458,7 +432,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
                 )
                 kode_benang_mapping[kode_trans] = unique_b
               else:
-                kode_benang_mapping[kode_trans] = "Tidak Ada TBB/MBB/MWP/TWP/TBM"
+                kode_benang_mapping[kode_trans] = "Tidak Ada TWP/MWP/TBM"
             else:
               kode_benang_mapping[kode_trans] = ""
           else:
@@ -484,13 +458,12 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           sub_df = master_df[master_df["Kode"] == kode_trans]
           if sub_df.empty:
             continue
-          gudang_raw = str(sub_df.iloc[0].get("Gudang", ""))
-          wh_type = get_warehouse_type(gudang_raw)
+          gudang = str(sub_df.iloc[0].get("Gudang", "")).strip().lower()
           first_row = sub_df.iloc[0]
 
-          if wh_type == "softcone":
-            valid_prefixes = ("TBB", "MBB", "MWP", "TWP", "TBM")
-          elif wh_type == "mesin_dyeing_lab":
+          if "softcone" in gudang:
+            valid_prefixes = ("TBB", "MBB", "TWP", "MWP", "TBM")
+          elif "mesin dyeing" in gudang or "lab & rnd" in gudang:
             valid_prefixes = ("TWP", "MWP", "TBM")
           else:
             valid_prefixes = ()
@@ -615,9 +588,10 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             continue
 
           first_row_sub = sub_df.iloc[0]
-          gudang_raw = str(first_row_sub.get("Gudang", ""))
-          wh_type = get_warehouse_type(gudang_raw)
-          is_valid_warehouse_for_dyelot = (wh_type == "mesin_dyeing_lab")
+          gudang_raw = str(first_row_sub.get("Gudang", "")).strip().lower()
+          is_valid_warehouse_for_dyelot = (
+              "mesin dyeing" in gudang_raw or "lab & rnd" in gudang_raw
+          )
 
           ket_text_combined = ""
           for col_c in master_df.columns:
@@ -760,9 +734,10 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               str(row.get(col_kode_item, "")).strip() if col_kode_item else ""
           )
           kode_trans = str(row.get("Kode", ""))
-          gudang_raw = str(row.get("Gudang", ""))
-          wh_type = get_warehouse_type(gudang_raw)
-          is_valid_warehouse_for_dyelot = (wh_type == "mesin_dyeing_lab")
+          gudang = str(row.get("Gudang", "")).strip().lower()
+          is_valid_warehouse_for_dyelot = (
+              "mesin dyeing" in gudang or "lab & rnd" in gudang
+          )
 
           if not kode_trans or kode_trans == "nan":
             cek_jumlah_benang_list.append("")
@@ -773,7 +748,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             continue
 
           # Handle khusus Gudang Dyeing STI
-          if wh_type == "dyeing_sti":
+          if "dyeing sti" in gudang:
             item_val_upper = item_code.upper()
             valid_prefixes_sti = ("TBB", "MBB", "MWP", "TWP", "TBM")
             if item_val_upper.startswith(valid_prefixes_sti):
@@ -932,8 +907,8 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
 
         st.session_state.processed_df = master_df
         st.success(
-            "✨ Proses validasi berhasil dijalankan dengan aturan kode"
-            " benang yang benar!"
+            "✨ Proses validasi (Cek Benang & Cek Obat digabung ke Crosscheck"
+            " Qty) berhasil dijalankan!"
         )
 
     # Tampilkan hasil & tombol download
@@ -988,11 +963,38 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
       with col_dl2:
         output_buffer_inc = io.BytesIO()
         with pd.ExcelWriter(output_buffer_inc, engine="openpyxl") as writer:
-          kodes_incorrect = processed_df[
-              (processed_df["Crosscheck Qty"] == "INCORRECT")
-              & (processed_df["Kode"].notna())
-              & (processed_df["Kode"] != "")
-          ]["Kode"].unique()
+          # ==========================================
+          # MODIFIKASI: Logika Sheet Incorrect Benang
+          # ==========================================
+          valid_kodes_incorrect_benang = []
+          unique_kodes_list = processed_df["Kode"].dropna().unique()
+          
+          for kode_trans in unique_kodes_list:
+            if not kode_trans:
+              continue
+            sub_df = processed_df[processed_df["Kode"] == kode_trans]
+            if sub_df.empty:
+              continue
+            
+            first_row = sub_df.iloc[0]
+            cek_benang_val = str(first_row.get("Cek jumlah benang", "")).strip()
+            
+            has_benang_incorrect = False
+            for _, r in sub_df.iterrows():
+              cc_val = str(r.get("Crosscheck Qty", "")).strip()
+              item_code = str(r.get(col_kode_item, "")).strip().upper() if col_kode_item else ""
+              if cc_val == "INCORRECT":
+                if not item_code.startswith("TBB") or cek_benang_val == "Tidak Ada TWP/MWP/TBM":
+                  has_benang_incorrect = True
+                  break
+            
+            if cek_benang_val == "Tidak Ada TWP/MWP/TBM" or has_benang_incorrect:
+              valid_kodes_incorrect_benang.append(kode_trans)
+
+          df_inc_normal_full = processed_df[
+              processed_df["Kode"].isin(valid_kodes_incorrect_benang)
+          ]
+          # ==========================================
 
           kodes_wajar = processed_df[
               (
@@ -1003,56 +1005,18 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               & (processed_df["Kode"] != "")
           ]["Kode"].unique()
 
-          df_inc_normal_full = processed_df[
-              processed_df["Kode"].isin(kodes_incorrect)
-          ]
           df_inc_wajar_full = processed_df[
               processed_df["Kode"].isin(kodes_wajar)
           ]
 
-          # --- FILTER STRICT UNTUK SHEET 'incorrect benang' ---
-          def is_benang_item(item_val, wh_type):
-            item_up = str(item_val).strip().upper()
-            if wh_type == "softcone":
-              return item_up.startswith(("TBB", "MBB", "MWP", "TWP", "TBM"))
-            elif wh_type == "mesin_dyeing_lab":
-              return item_up.startswith(("TWP", "MWP", "TBM"))
-            return False
-
-          kodes_benang_incorrect = set()
-          for kode_trans, group in processed_df.groupby("Kode"):
-            if pd.isna(kode_trans) or kode_trans == "":
-              continue
-            gudang_raw = str(group.iloc[0].get("Gudang", ""))
-            wh_type = get_warehouse_type(gudang_raw)
-
-            # Cek secara spesifik baris benang di dalam kelompok ini
-            for _, row in group.iterrows():
-              item_val = row.get(col_kode_item, "") if col_kode_item else ""
-              cc_val = str(row.get("Crosscheck Qty", "")).strip()
-
-              # Kriteria Mutlak: Harus item benang DAN statusnya benar-benar INCORRECT
-              if is_benang_item(item_val, wh_type) and cc_val == "INCORRECT":
-                kodes_benang_incorrect.add(kode_trans)
-                break
-
-          df_inc_benang_full = processed_df[
-              processed_df["Kode"].isin(kodes_benang_incorrect)
-          ]
-
-          # Simpan ke masing-masing sheet Excel
           df_inc_normal_full.to_excel(writer, index=False, sheet_name="INCORRECT")
           df_inc_wajar_full.to_excel(
               writer, index=False, sheet_name="INCORRECT (Selisih Wajar)"
           )
-          df_inc_benang_full.to_excel(
-              writer, index=False, sheet_name="incorrect benang"
-          )
-          
         excel_data_inc = output_buffer_inc.getvalue()
 
         st.download_button(
-            label="📥 Download Rekap 1 Kelompok INCORRECT (3 Sheet)",
+            label="📥 Download Rekap 1 Kelompok INCORRECT (2 Sheet)",
             data=excel_data_inc,
             file_name="Laporan_Rekap_Incorrect_Satu_Kelompok.xlsx",
             mime=(
