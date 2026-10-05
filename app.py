@@ -474,6 +474,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           wh_type = get_warehouse_type(gudang_raw)
           first_row = sub_df.iloc[0]
 
+          # SESUAI ATURAN GUDANG:
           if wh_type == "softcone":
             valid_prefixes = ("TBB", "MBB", "MWP", "TWP", "TBM")
           elif wh_type == "mesin_dyeing_lab":
@@ -918,8 +919,8 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
 
         st.session_state.processed_df = master_df
         st.success(
-            "✨ Proses validasi (Cek Benang & Cek Obat digabung ke Crosscheck"
-            " Qty) berhasil dijalankan!"
+            "✨ Proses validasi berhasil dijalankan dengan aturan kode"
+            " benang yang benar!"
         )
 
     # Tampilkan hasil & tombol download
@@ -996,7 +997,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               processed_df["Kode"].isin(kodes_wajar)
           ]
 
-          # --- LOGIKA FINAL: INCORRECT BENANG (MURNI PER BARIS SESUAI PERMINTAAN) ---
+          # --- LOGIKA STRICT: FILTER INCORRECT BENANG SESUAI ATURAN GUDANG ---
           col_map_dl = {str(c).strip().upper(): c for c in processed_df.columns}
           c_kode_item = None
           for k, v in col_map_dl.items():
@@ -1023,7 +1024,9 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             if cc_val != "INCORRECT":
               return False
 
-            # 2. Berdasarkan jenis gudang, pastikan itu benar item benang
+            # 2. Aturan Benang Murni berdasarkan Gudang:
+            # - Softcone: TBB, MBB, MWP, TWP, TBM (TBB di sini adalah benang)
+            # - Mesin Dyeing, Lab, & RND: TWP, MWP, TBM
             if wh_type == "softcone":
               return item_val.startswith(("TBB", "MBB", "MWP", "TWP", "TBM"))
             elif wh_type == "mesin_dyeing_lab":
@@ -1031,7 +1034,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             
             return False
 
-          # Filter baris yang benar-benar memenuhi syarat di atas (murni per baris)
+          # Filter baris item benang yang berstatus INCORRECT murni per baris
           df_inc_benang_full = processed_df[
               processed_df.apply(filter_incorrect_benang_simple, axis=1)
           ]
