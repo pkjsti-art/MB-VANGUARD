@@ -216,13 +216,13 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
 
   if st.session_state.raw_master is None:
     st.warning(
-        "⚠️️ Belum ada data Master Gudang yang di-upload. Silakan lakukan upload"
+        "⚠ Belum ada data Master Gudang yang di-upload. Silakan lakukan upload"
         " di menu **Master Data (Upload)** terlebih dahulu!"
     )
   else:
     if st.session_state.raw_dyelot is None:
       st.warning(
-          "⚠️ Perhatian: File Master Dyelot belum di-upload. Audit obat akan"
+          "⚠️️ Perhatian: File Master Dyelot belum di-upload. Audit obat akan"
           " dilewati jika file resep belum disertakan."
       )
 
@@ -585,7 +585,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           else:
             group_summary_dict[kode_trans] = " | ".join(issues)
 
-        # Mapping item benang & pencarian index baris benang pertama KHUSUS Mesin Dyeing & Lab & Rnd
+        # Robust Mapping Item Benang & Pencarian Baris Benang (Atas/Tengah/Bawah/Fallback Aman)
         first_yarn_idx_dict = {}
         kode_benang_mapping = {}
 
@@ -596,24 +596,45 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           gudang_raw = str(sub_df.iloc[0].get("Gudang", "")).strip().lower()
 
           if "mesin dyeing" in gudang_raw or "lab & rnd" in gudang_raw:
+            target_idx = None
             if col_kode_item:
-              benang_sub = sub_df[
-                  sub_df[col_kode_item]
-                  .astype(str)
-                  .str.strip()
-                  .str.upper()
-                  .str.startswith(("TWP", "MWP", "TBM"), na=False)
-              ]
-              if not benang_sub.empty:
-                unique_b = ", ".join(
-                    benang_sub[col_kode_item].astype(str).str.strip().unique()
+              # 1. Prioritaskan baris yang kodenya sama dengan Kode Barang Jadi
+              for idx_sub, row_sub in sub_df.iterrows():
+                k_item = str(row_sub.get(col_kode_item, "")).strip().upper()
+                k_jadi = (
+                    str(row_sub.get("Kode Barang Jadi", "")).strip().upper()
                 )
-                kode_benang_mapping[kode_trans] = unique_b
-                first_yarn_idx_dict[kode_trans] = benang_sub.index[0]
-              else:
-                kode_benang_mapping[kode_trans] = "Tidak Ada TWP/MWP/TBM"
+                if k_jadi != "" and k_item == k_jadi:
+                  target_idx = idx_sub
+                  break
+
+              # 2. Jika belum ketemu, cari dengan awalan umum benang/barang jadi
+              if target_idx is None:
+                benang_sub = sub_df[
+                    sub_df[col_kode_item]
+                    .astype(str)
+                    .str.strip()
+                    .str.upper()
+                    .str.startswith(
+                        ("TWP", "MWP", "TBM", "TW", "WIP", "FG"), na=False
+                    )
+                ]
+                if not benang_sub.empty:
+                  target_idx = benang_sub.index[0]
+
+            # 3. Fallback mutlak: ambil baris pertama kelompok jika tidak ada pola yang cocok
+            if target_idx is None:
+              target_idx = sub_df.index[0]
+
+            first_yarn_idx_dict[kode_trans] = target_idx
+
+            if col_kode_item and target_idx in sub_df.index:
+              kode_b_val = str(sub_df.loc[target_idx, col_kode_item]).strip()
+              kode_benang_mapping[kode_trans] = kode_b_val
             else:
               kode_benang_mapping[kode_trans] = ""
+          else:
+            kode_benang_mapping[kode_trans] = ""
 
         # --- ITERASI UTAMA PER BARIS UNTUK MENGISI KOLOM UTAMA ---
         cek_jumlah_benang_list = []
@@ -680,7 +701,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           sel_val = ""
           sat_val = ""
 
-          # A. Cek Benang (Group-Level Qty Check) - BERJALAN DI BARIS BENANG (BAIK DI ATAS, TENGAH, MAUPUN DI BAWAH)
+          # A. Cek Benang (Group-Level Qty Check) - BERJALAN DI BARIS BENANG (ATAS, TENGAH, ATAU BAWAH)
           if is_first_yarn_row:
             target_val = row.get("_temp_target_gr", "")
             if (
@@ -690,24 +711,11 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             ):
               target_qty = round(float(target_val), 0)
               sub_df = master_df[master_df["Kode"] == kode_trans]
-              benang_sub = (
-                  sub_df[
-                      sub_df[col_kode_item]
-                      .astype(str)
-                      .str.strip()
-                      .str.upper()
-                      .str.startswith(("TWP", "MWP", "TBM"), na=False)
-                  ]
-                  if col_kode_item
-                  else pd.DataFrame()
-              )
-
-              if (
-                  not benang_sub.empty
-                  and "Qty BB Standar (GR)" in benang_sub.columns
-              ):
+              
+              # Ambil seluruh qty dari baris-baris TBB dalam kelompok ini untuk dibandingkan
+              if not sub_df.empty and "Qty BB Standar (GR)" in sub_df.columns:
                 valid_qtys = pd.to_numeric(
-                    benang_sub["Qty BB Standar (GR)"], errors="coerce"
+                    sub_df["Qty BB Standar (GR)"], errors="coerce"
                 ).dropna()
               else:
                 valid_qtys = pd.Series(dtype=float)
