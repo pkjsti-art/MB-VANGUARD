@@ -223,12 +223,14 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
   else:
     if st.session_state.raw_dyelot is None:
       st.warning(
-          "⚠️ Perhatian: File Master Dyelot belum di-upload. Kolom Crosscheck"
-          " Qty akan kosong jika file resep belum disertakan."
+          "⚠️ Perhatian: File Master Dyelot belum di-upload. Kolom Audit"
+          " Resep Obat akan kosong jika file resep belum disertakan."
       )
 
     if st.button("🚀 Jalankan Proses & Validasi Data Lengkap"):
-      with st.spinner("Sedang mengeksekusi rumus dan audit resep/obat akurat..."):
+      with st.spinner(
+          "Sedang mengeksekusi cek benang & audit resep obat akurat..."
+      ):
         master_df = st.session_state.raw_master.copy()
 
         # Bersihkan nama kolom dari spasi ekstra
@@ -302,7 +304,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           if c_name not in master_df.columns:
             master_df[c_name] = ""
 
-        # 1. Forward Fill untuk kolom utama termasuk Keterangan & Keterangan Lain per Kode Transaksi
+        # 1. Forward Fill untuk kolom utama per Kode Transaksi
         target_ffill_cols = [
             "Gudang",
             "Kode",
@@ -388,7 +390,37 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
         else:
           master_df["Qty BB Standar (GR)"] = ""
 
-        # 4. Pemetaan Cek Benang per Kelompok Transaksi
+        # --- 4. LOGIKA UTAMA: CROSSCHECK QTY (CEK BENANG) SEPERTI SEMULA ---
+        crosscheck_qty_list = []
+        for idx, row in master_df.iterrows():
+          item_code = (
+              str(row.get(col_kode_item, "")).strip().upper()
+              if col_kode_item
+              else ""
+          )
+          # Logika asli pengecekan qty benang/material (membandingkan Qty dengan Target Qty jika ada)
+          t_qty = parse_numeric(row.get(col_target_qty))
+          q_val = parse_numeric(row.get(col_qty))
+
+          if t_qty is not None and q_val is not None:
+            if abs(t_qty - q_val) < 0.0001:
+              crosscheck_qty_list.append("CORRECT")
+            else:
+              crosscheck_qty_list.append("INCORRECT")
+          else:
+            # Jika baris header transaksi atau total atau tidak ada target
+            if (
+                item_code == ""
+                or "TOTAL" in item_code
+                or item_code == "OVERHEAD COST"
+            ):
+              crosscheck_qty_list.append("")
+            else:
+              crosscheck_qty_list.append("CORRECT" if q_val is not None else "")
+
+        master_df["Crosscheck Qty"] = crosscheck_qty_list
+
+        # 5. Pemetaan Cek Benang (Text) per Kelompok Transaksi
         cek_jumlah_benang_list = []
         unique_kodes = master_df["Kode"].dropna().unique()
 
@@ -477,10 +509,10 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               "Cek jumlah benang"
           ].fillna("")
 
-        # --- 5. AUDIT OBAT (CHEMICAL & DYESTUFF) - DITAMPILKAN KE KOLOM CROSSCHECK QTY, SELISIH, & SATUAN SELISIH ---
-        crosscheck_qty_list = []
-        selisih_list = []
-        satuan_selisih_list = []
+        # --- 6. AUDIT OBAT (CHEMICAL & DYESTUFF) MENGGUNAKAN KOLOM KHUSUS OBAT ---
+        crosscheck_obat_list = []
+        selisih_obat_list = []
+        satuan_selisih_obat_list = []
         list_item_kurang_lebih_list = []
 
         dyelot_df = st.session_state.raw_dyelot
@@ -517,7 +549,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
                 return v
           return None
 
-        # Pemetaan kolom Master Dyelot (Murni mencari kolom Kode Obat dan Obat/Nama Obat)
         d_col_kode = find_dyelot_col(
             ["KODE OBAT", "KODE ITEM", "KODE", "ITEM CODE"]
         )
@@ -526,7 +557,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             ["ACTUAL", "AKTUAL", "QTY ACTUAL", "QTY"]
         )
 
-        # Pre-compute group-level summary untuk kolom 'List Item Kurang/Lebih'
         group_summary_dict = {}
         unique_kodes_audit = master_df["Kode"].dropna().unique()
 
@@ -576,7 +606,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           issues = []
           has_any_tbb = False
 
-          # Himpunan item TBB di Master MB
           mb_tbb_dict = {}
           for _, row_item in sub_df.iterrows():
             item_code = (
@@ -602,7 +631,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
                   "qty": qty_mb_std,
               }
 
-          # Himpunan item TBB di Master Dyelot
           dyelot_tbb_dict = {}
           for _, d_row in matched_dyelot_rows.iterrows():
             d_k_obat = (
@@ -639,7 +667,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
                   "qty": actual_val,
               }
 
-          # 1. Cek Item Berlebihan: Ada di Master MB, TAPI TIDAK ADA di Master Dyelot
           for code_up, data_mb in mb_tbb_dict.items():
             if code_up not in dyelot_tbb_dict:
               item_full_label = (
@@ -649,7 +676,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
                   f"Item Berlebihan [{item_full_label}] {data_mb['qty']} GR"
               )
 
-          # 2. Cek Item Kurang: Ada di Master Dyelot, TAPI TIDAK ADA di Master MB
           for code_up, data_dyelot in dyelot_tbb_dict.items():
             if code_up not in mb_tbb_dict:
               item_full_label = (
@@ -666,18 +692,16 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           else:
             group_summary_dict[kode_trans] = " | ".join(issues)
 
-        # Proses Baris per Baris untuk Crosscheck Qty, Selisih, & Satuan Selisih
         for idx, row in master_df.iterrows():
           item_code = (
               str(row.get(col_kode_item, "")).strip() if col_kode_item else ""
           )
           kode_trans = str(row.get("Kode", ""))
 
-          # PENTING: Hiraukan / abaikan item selain TBB
           if not item_code.upper().startswith("TBB"):
-            crosscheck_qty_list.append("")
-            selisih_list.append("")
-            satuan_selisih_list.append("")
+            crosscheck_obat_list.append("")
+            selisih_obat_list.append("")
+            satuan_selisih_obat_list.append("")
 
             first_idx = (
                 master_df[master_df["Kode"] == kode_trans].index[0]
@@ -692,7 +716,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               list_item_kurang_lebih_list.append("")
             continue
 
-          # Cek apakah transaksi ini memiliki PIBC di Keterangan / Keterangan Lain
           ket_text_combined = ""
           for col_c in master_df.columns:
             col_c_up = str(col_c).strip().upper()
@@ -708,11 +731,10 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           )
           pibc_list = [m.upper().strip() for m in pibc_matches]
 
-          # Jika TIDAK ADA PIBC, SKIP (kosongkan kolom audit untuk baris ini)
           if not pibc_list or not has_dyelot_data:
-            crosscheck_qty_list.append("")
-            selisih_list.append("")
-            satuan_selisih_list.append("")
+            crosscheck_obat_list.append("")
+            selisih_obat_list.append("")
+            satuan_selisih_obat_list.append("")
 
             first_idx = (
                 master_df[master_df["Kode"] == kode_trans].index[0]
@@ -727,7 +749,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               list_item_kurang_lebih_list.append("")
             continue
 
-          # Jika ada PIBC, jalankan audit obat per baris
           matched_dyelot_rows = pd.DataFrame()
           if not dyelot_df.empty and d_col_dyelot1:
             mask = False
@@ -741,10 +762,10 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             matched_dyelot_rows = dyelot_df[mask]
 
           if matched_dyelot_rows.empty:
-            crosscheck_qty_list.append("INCORRECT")
+            crosscheck_obat_list.append("INCORRECT")
             qty_mb_std = parse_numeric(row.get("Qty BB Standar (GR)", 0)) or 0.0
-            selisih_list.append(qty_mb_std)
-            satuan_selisih_list.append("GR")
+            selisih_obat_list.append(qty_mb_std)
+            satuan_selisih_obat_list.append("GR")
             first_idx = master_df[master_df["Kode"] == kode_trans].index[0]
             if idx == first_idx:
               list_item_kurang_lebih_list.append(
@@ -792,17 +813,17 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
 
             diff_obat = round(qty_mb_std - actual_dyelot, 4)
             if diff_obat == 0:
-              crosscheck_qty_list.append("CORRECT")
-              selisih_list.append(0)
-              satuan_selisih_list.append("GR")
+              crosscheck_obat_list.append("CORRECT")
+              selisih_obat_list.append(0)
+              satuan_selisih_obat_list.append("GR")
             else:
-              crosscheck_qty_list.append("INCORRECT")
-              selisih_list.append(diff_obat)
-              satuan_selisih_list.append("GR")
+              crosscheck_obat_list.append("INCORRECT")
+              selisih_obat_list.append(diff_obat)
+              satuan_selisih_obat_list.append("GR")
           else:
-            crosscheck_qty_list.append("INCORRECT")
-            selisih_list.append(qty_mb_std)
-            satuan_selisih_list.append("GR")
+            crosscheck_obat_list.append("INCORRECT")
+            selisih_obat_list.append(qty_mb_std)
+            satuan_selisih_obat_list.append("GR")
 
           first_idx = (
               master_df[master_df["Kode"] == kode_trans].index[0]
@@ -816,14 +837,17 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           else:
             list_item_kurang_lebih_list.append("")
 
-        # Masukkan hasil ke kolom Crosscheck Qty, Selisih, dan Satuan Selisih
-        master_df["Crosscheck Qty"] = crosscheck_qty_list
-        master_df["Selisih"] = selisih_list
-        master_df["Satuan Selisih"] = satuan_selisih_list
+        # Masukkan hasil audit obat ke kolom khusus obat
+        master_df["Crosscheck Obat"] = crosscheck_obat_list
+        master_df["Selisih Obat"] = selisih_obat_list
+        master_df["Satuan Selisih Obat"] = satuan_selisih_obat_list
         master_df["List Item Kurang/Lebih"] = list_item_kurang_lebih_list
 
         st.session_state.processed_df = master_df
-        st.success("✨ Proses validasi dan audit resep obat berhasil dijalankan!")
+        st.success(
+            "✨ Proses validasi cek benang & audit resep obat berhasil"
+            " dijalankan!"
+        )
 
     # Tampilkan hasil & tombol download
     if st.session_state.processed_df is not None:
@@ -842,9 +866,14 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             label="Total Kelompok Transaksi", value=f"{total_trx:,} Transaksi"
         )
       with m2:
-        st.metric(label="Status: CORRECT", value=f"{correct_count:,}")
+        st.metric(
+            label="Crosscheck Qty Benang: CORRECT", value=f"{correct_count:,}"
+        )
       with m3:
-        st.metric(label="Status: INCORRECT", value=f"{incorrect_normal:,}")
+        st.metric(
+            label="Crosscheck Qty Benang: INCORRECT",
+            value=f"{incorrect_normal:,}",
+        )
 
       st.markdown("---")
 
@@ -897,7 +926,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
       st.markdown("---")
 
       status_filter = st.selectbox(
-          "🔍 Filter Tampilan Berdasarkan Status:",
+          "🔍 Filter Tampilan Berdasarkan Status Crosscheck Qty Benang:",
           ["Tampilkan Semua", "CORRECT", "INCORRECT"],
       )
 
