@@ -450,6 +450,9 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             "ROLL",
             "TALI",
             "KUR",
+            "AVL",
+            "CONS",
+            "HTC",
         ]
         for kode_trans in unique_kodes:
           sub_df = master_df[master_df["Kode"] == kode_trans]
