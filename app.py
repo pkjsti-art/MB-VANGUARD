@@ -117,6 +117,8 @@ if "raw_master" not in st.session_state:
   st.session_state.raw_master = None
 if "raw_dyelot" not in st.session_state:
   st.session_state.raw_dyelot = None
+if "col_kode_item" not in st.session_state:
+  st.session_state.col_kode_item = None
 
 # --- MENU 1: MASTER DATA (UPLOAD) ---
 if menu_pilihan == "📂 Master Data (Upload)":
@@ -300,6 +302,9 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             if "UNIT" in k and v != col_target_unit:
               col_unit = v
               break
+
+        # Simpan ke session_state agar dapat diakses secara global
+        st.session_state.col_kode_item = col_kode_item
 
         # Pastikan kolom Keterangan dan Keterangan Lain ada di dataframe
         for c_name in ["Keterangan", "Keterangan Lain"]:
@@ -914,6 +919,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
     # Tampilkan hasil & tombol download
     if st.session_state.processed_df is not None:
       processed_df = st.session_state.processed_df
+      col_kode_item_saved = st.session_state.col_kode_item
 
       st.markdown("---")
       st.markdown("### 📊 Ringkasan Hasil Audit & Download Laporan")
@@ -964,34 +970,44 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
         output_buffer_inc = io.BytesIO()
         with pd.ExcelWriter(output_buffer_inc, engine="openpyxl") as writer:
           # ==========================================
-          # MODIFIKASI: Logika Sheet Incorrect Benang
+          # Logika Sheet Incorrect Benang
           # ==========================================
           valid_kodes_incorrect_benang = []
           unique_kodes_list = processed_df["Kode"].dropna().unique()
-          
+
           for kode_trans in unique_kodes_list:
             if not kode_trans:
               continue
             sub_df = processed_df[processed_df["Kode"] == kode_trans]
             if sub_df.empty:
               continue
-            
+
             first_row = sub_df.iloc[0]
             cek_benang_val = str(first_row.get("Cek jumlah benang", "")).strip()
-            
+
             has_benang_incorrect = False
             for _, r in sub_df.iterrows():
               cc_val = str(r.get("Crosscheck Qty", "")).strip()
-              item_code = str(r.get(col_kode_item, "")).strip().upper() if col_kode_item else ""
+              item_code = (
+                  str(r.get(col_kode_item_saved, "")).strip().upper()
+                  if col_kode_item_saved
+                  else ""
+              )
               if cc_val == "INCORRECT":
-                if not item_code.startswith("TBB") or cek_benang_val == "Tidak Ada TWP/MWP/TBM":
+                if (
+                    not item_code.startswith("TBB")
+                    or cek_benang_val == "Tidak Ada TWP/MWP/TBM"
+                ):
                   has_benang_incorrect = True
                   break
-            
-            if cek_benang_val == "Tidak Ada TWP/MWP/TBM" or has_benang_incorrect:
+
+            if (
+                cek_benang_val == "Tidak Ada TWP/MWP/TBM"
+                or has_benang_incorrect
+            ):
               valid_kodes_incorrect_benang.append(kode_trans)
 
-          df_inc_normal_full = processed_df[
+          df_inc_benang_full = processed_df[
               processed_df["Kode"].isin(valid_kodes_incorrect_benang)
           ]
           # ==========================================
@@ -1009,7 +1025,10 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               processed_df["Kode"].isin(kodes_wajar)
           ]
 
-          df_inc_normal_full.to_excel(writer, index=False, sheet_name="INCORRECT")
+          # Menulis ke Sheet Excel Terpisah
+          df_inc_benang_full.to_excel(
+              writer, index=False, sheet_name="Incorrect Benang"
+          )
           df_inc_wajar_full.to_excel(
               writer, index=False, sheet_name="INCORRECT (Selisih Wajar)"
           )
