@@ -978,21 +978,61 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               & (processed_df["Kode"] != "")
           ]["Kode"].unique()
 
+          # --- Penambahan Logika untuk Sheet "incorrect benang" ---
+          col_map_dl = {str(c).strip().upper(): c for c in processed_df.columns}
+          c_kode_item = None
+          for k, v in col_map_dl.items():
+            if "KODE" in k and ("ITEM" in k or "BARANG" in k):
+              c_kode_item = v
+              break
+          if not c_kode_item:
+            for k, v in col_map_dl.items():
+              if "KODE" in k:
+                c_kode_item = v
+                break
+
+          def filter_incorrect_benang(row):
+              gudang_val = str(row.get("Gudang", "")).strip().lower()
+              item_val = str(row.get(c_kode_item, "")).strip().upper() if c_kode_item else ""
+              cc_val = str(row.get("Crosscheck Qty", "")).strip()
+              
+              if cc_val != "INCORRECT":
+                  return False
+              
+              if "softcone" in gudang_val:
+                  if item_val.startswith(("TBB", "MBB", "TWP", "MWP", "TBM")):
+                      return True
+              elif "mesin dyeing" in gudang_val or "lab & rnd" in gudang_val:
+                  if item_val.startswith(("TWP", "MWP", "TBM")):
+                      return True
+              return False
+
+          mask_inc_benang = processed_df.apply(filter_incorrect_benang, axis=1)
+          kodes_incorrect_benang = processed_df[
+              mask_inc_benang & processed_df["Kode"].notna() & (processed_df["Kode"] != "")
+          ]["Kode"].unique()
+
           df_inc_normal_full = processed_df[
               processed_df["Kode"].isin(kodes_incorrect)
           ]
           df_inc_wajar_full = processed_df[
               processed_df["Kode"].isin(kodes_wajar)
           ]
+          df_inc_benang_full = processed_df[
+              processed_df["Kode"].isin(kodes_incorrect_benang)
+          ]
 
           df_inc_normal_full.to_excel(writer, index=False, sheet_name="INCORRECT")
           df_inc_wajar_full.to_excel(
               writer, index=False, sheet_name="INCORRECT (Selisih Wajar)"
           )
+          df_inc_benang_full.to_excel(
+              writer, index=False, sheet_name="incorrect benang"
+          )
         excel_data_inc = output_buffer_inc.getvalue()
 
         st.download_button(
-            label="📥 Download Rekap 1 Kelompok INCORRECT (2 Sheet)",
+            label="📥 Download Rekap 1 Kelompok INCORRECT (3 Sheet)",
             data=excel_data_inc,
             file_name="Laporan_Rekap_Incorrect_Satu_Kelompok.xlsx",
             mime=(
