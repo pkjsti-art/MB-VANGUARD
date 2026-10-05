@@ -217,7 +217,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
 
   if st.session_state.raw_master is None:
     st.warning(
-        "⚠️️ Belum ada data Master Gudang yang di-upload. Silakan lakukan upload"
+        "⚠️ Belum ada data Master Gudang yang di-upload. Silakan lakukan upload"
         " di menu **Master Data (Upload)** terlebih dahulu!"
     )
   else:
@@ -253,24 +253,10 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
         col_qty = None
         col_unit = None
 
-        # Deteksi kolom kode item secara presisi (hindari tertukar dengan kolom 'Kode' transaksi)
         for k, v in col_mapping_std.items():
-          if "KODE" in k and ("ITEM" in k or "BARANG" in k or "MATERIAL" in k):
+          if "KODE" in k and ("ITEM" in k or "BARANG" in k):
             col_kode_item = v
-            break
-        if not col_kode_item:
-          for k, v in col_mapping_std.items():
-            if "KODE" in k and k != "KODE":
-              col_kode_item = v
-              break
-        if not col_kode_item:
-          for k, v in col_mapping_std.items():
-            if "KODE" in k:
-              col_kode_item = v
-              break
-
-        for k, v in col_mapping_std.items():
-          if ("NAMA" in k or "DESKRIPSI" in k or "URAIAN" in k) and (
+          elif ("NAMA" in k or "DESKRIPSI" in k or "URAIAN" in k) and (
               "ITEM" in k or "BARANG" in k
           ):
             col_nama_item = v
@@ -283,6 +269,11 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           elif k in ["UNIT", "SATUAN"]:
             col_unit = v
 
+        if not col_kode_item:
+          for k, v in col_mapping_std.items():
+            if "KODE" in k:
+              col_kode_item = v
+              break
         if not col_nama_item:
           for k, v in col_mapping_std.items():
             if "NAMA" in k or "BARANG" in k:
@@ -296,7 +287,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               break
         if not col_target_unit:
           for k, v in col_mapping_std.items():
-            if "UNIT" in k and v != col_target_unit:
+            if "UNIT" in k and v != col_unit:
               col_target_unit = v
               break
         if not col_qty:
@@ -459,6 +450,9 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             "ROLL",
             "TALI",
             "KUR",
+            "AVL",
+            "CONS",
+            "HTC",
         ]
         for kode_trans in unique_kodes:
           sub_df = master_df[master_df["Kode"] == kode_trans]
@@ -969,27 +963,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
       with col_dl2:
         output_buffer_inc = io.BytesIO()
         with pd.ExcelWriter(output_buffer_inc, engine="openpyxl") as writer:
-          # Deteksi ulang nama kolom kode item secara presisi di dalam tombol download
-          col_mapping_dl = {}
-          for c in processed_df.columns:
-            col_mapping_dl[str(c).strip().upper()] = c
-
-          col_kode_item_dl = None
-          for k, v in col_mapping_dl.items():
-            if "KODE" in k and ("ITEM" in k or "BARANG" in k or "MATERIAL" in k):
-              col_kode_item_dl = v
-              break
-          if not col_kode_item_dl:
-            for k, v in col_mapping_dl.items():
-              if "KODE" in k and k != "KODE":
-                col_kode_item_dl = v
-                break
-          if not col_kode_item_dl:
-            for k, v in col_mapping_dl.items():
-              if "KODE" in k:
-                col_kode_item_dl = v
-                break
-
           kodes_incorrect = processed_df[
               (processed_df["Crosscheck Qty"] == "INCORRECT")
               & (processed_df["Kode"].notna())
@@ -1012,56 +985,14 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               processed_df["Kode"].isin(kodes_wajar)
           ]
 
-          # Logika Seleksi Kelompok untuk Sheet INCORRECT BENANG (Penyaringan Murni Khusus Benang per Jenis Gudang)
-          kodes_inc_benang = []
-          unique_kodes_all = processed_df["Kode"].dropna().unique()
-
-          for kode_trans in unique_kodes_all:
-            sub_df = processed_df[processed_df["Kode"] == kode_trans]
-            if sub_df.empty:
-              continue
-            gudang_raw = str(sub_df.iloc[0].get("Gudang", "")).strip().lower()
-
-            if not col_kode_item_dl:
-              continue
-
-            has_incorrect_yarn = False
-            for _, row_item in sub_df.iterrows():
-              item_c = (
-                  str(row_item.get(col_kode_item_dl, "")).strip().upper()
-              )
-              cc_qty = str(row_item.get("Crosscheck Qty", "")).strip()
-
-              # Filter ketat sesuai karakteristik gudang (mengabaikan error obat TBB pada gudang dyeing/lab)
-              if "softcone" in gudang_raw:
-                if item_c.startswith(("TWP", "MWP", "TBM", "TBB", "MBB")):
-                  if cc_qty == "INCORRECT":
-                    has_incorrect_yarn = True
-                    break
-              elif "mesin dyeing" in gudang_raw or "lab & rnd" in gudang_raw:
-                if item_c.startswith(("TWP", "MWP", "TBM")):
-                  if cc_qty == "INCORRECT":
-                    has_incorrect_yarn = True
-                    break
-
-            if has_incorrect_yarn:
-              kodes_inc_benang.append(kode_trans)
-
-          df_inc_benang = processed_df[
-              processed_df["Kode"].isin(kodes_inc_benang)
-          ]
-
           df_inc_normal_full.to_excel(writer, index=False, sheet_name="INCORRECT")
           df_inc_wajar_full.to_excel(
               writer, index=False, sheet_name="INCORRECT (Selisih Wajar)"
           )
-          df_inc_benang.to_excel(
-              writer, index=False, sheet_name="INCORRECT BENANG"
-          )
         excel_data_inc = output_buffer_inc.getvalue()
 
         st.download_button(
-            label="📥 Download Rekap 1 Kelompok INCORRECT (3 Sheet)",
+            label="📥 Download Rekap 1 Kelompok INCORRECT (2 Sheet)",
             data=excel_data_inc,
             file_name="Laporan_Rekap_Incorrect_Satu_Kelompok.xlsx",
             mime=(
