@@ -264,13 +264,23 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
         col_qty = None
         col_unit = None
 
+        # Deteksi Kolom Kode Item (Mendukung 'KODE ITEM', 'KODE', dll)
         for k, v in col_mapping_std.items():
-          if "KODE" in k and ("ITEM" in k or "BARANG" in k):
+          if (
+              ("KODE" in k or "CODE" in k)
+              and ("ITEM" in k or "BARANG" in k or "MATERIAL" in k)
+              and "BARANG JADI" not in k
+          ):
             col_kode_item = v
-          elif ("NAMA" in k or "DESKRIPSI" in k or "URAIAN" in k) and (
+            break
+
+        for k, v in col_mapping_std.items():
+          if ("NAMA" in k or "DESKRIPSI" in k or "URAIAN" in k) and (
               "ITEM" in k or "BARANG" in k
           ):
-            col_nama_item = v
+            if "BARANG JADI" not in k:
+              col_nama_item = v
+              break
           elif "TARGET" in k and "QTY" in k:
             col_target_qty = v
           elif "TARGET" in k and "UNIT" in k:
@@ -282,13 +292,17 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
 
         if not col_kode_item:
           for k, v in col_mapping_std.items():
-            if "KODE" in k:
+            if (
+                ("KODE" in k or "CODE" in k)
+                and "JADI" not in k
+                and "TRANS" not in k
+            ):
               col_kode_item = v
               break
         if not col_nama_item:
           for k, v in col_mapping_std.items():
             if "NAMA" in k or "BARANG" in k:
-              if v != col_kode_item:
+              if v != col_kode_item and "JADI" not in k:
                 col_nama_item = v
                 break
         if not col_target_qty:
@@ -474,7 +488,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           wh_type = get_warehouse_type(gudang_raw)
           first_row = sub_df.iloc[0]
 
-          # SESUAI ATURAN GUDANG:
           if wh_type == "softcone":
             valid_prefixes = ("TBB", "MBB", "MWP", "TWP", "TBM")
           elif wh_type == "mesin_dyeing_lab":
@@ -997,19 +1010,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               processed_df["Kode"].isin(kodes_wajar)
           ]
 
-          # --- LOGIKA STRICT: HANYA MASUK JIKA BENANGNYA BENAR-BENAR INCORRECT ---
-          col_map_dl = {str(c).strip().upper(): c for c in processed_df.columns}
-          c_kode_item = None
-          for k, v in col_map_dl.items():
-            if "KODE" in k and ("ITEM" in k or "BARANG" in k):
-              c_kode_item = v
-              break
-          if not c_kode_item:
-            for k, v in col_map_dl.items():
-              if "KODE" in k:
-                c_kode_item = v
-                break
-
+          # --- FILTER STRICT UNTUK SHEET 'incorrect benang' ---
           def is_benang_item(item_val, wh_type):
             item_up = str(item_val).strip().upper()
             if wh_type == "softcone":
@@ -1018,7 +1019,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               return item_up.startswith(("TWP", "MWP", "TBM"))
             return False
 
-          # Cari kode transaksi yang BENAR-BENAR BENANGNYA bernilai INCORRECT
           kodes_benang_incorrect = set()
           for kode_trans, group in processed_df.groupby("Kode"):
             if pd.isna(kode_trans) or kode_trans == "":
@@ -1026,16 +1026,16 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             gudang_raw = str(group.iloc[0].get("Gudang", ""))
             wh_type = get_warehouse_type(gudang_raw)
 
+            # Cek secara spesifik baris benang di dalam kelompok ini
             for _, row in group.iterrows():
-              item_val = row.get(c_kode_item, "") if c_kode_item else ""
+              item_val = row.get(col_kode_item, "") if col_kode_item else ""
               cc_val = str(row.get("Crosscheck Qty", "")).strip()
 
-              # Syarat mutlak: Harus item benang SESUAI GUDANGNYA DAN statusnya INCORRECT
+              # Kriteria Mutlak: Harus item benang DAN statusnya benar-benar INCORRECT
               if is_benang_item(item_val, wh_type) and cc_val == "INCORRECT":
                 kodes_benang_incorrect.add(kode_trans)
-                break  # Cukup temukan satu benang yang benar-benar incorrect dalam kelompok ini
+                break
 
-          # Ambil seluruh baris dari kelompok transaksi yang benangnya benar-benar incorrect
           df_inc_benang_full = processed_df[
               processed_df["Kode"].isin(kodes_benang_incorrect)
           ]
