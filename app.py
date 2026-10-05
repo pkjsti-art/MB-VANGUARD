@@ -438,7 +438,9 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           gudang_row_val = str(first_row_sub.get("Gudang", "")).strip().lower()
 
           # Audit obat hanya dijalankan jika gudang Mesin Dyeing atau Lab & Rnd
-          if not ("mesin dyeing" in gudang_row_val or "lab & rnd" in gudang_row_val):
+          if not (
+              "mesin dyeing" in gudang_row_val or "lab & rnd" in gudang_row_val
+          ):
             group_summary_dict[kode_trans] = ""
             continue
 
@@ -457,6 +459,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           )
           pibc_list = [m.upper().strip() for m in pibc_matches]
 
+          # Jika tidak ada PIBC, resep obat di-skip
           if not has_dyelot_data or not pibc_list:
             group_summary_dict[kode_trans] = ""
             continue
@@ -590,6 +593,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
                     benang_sub[col_kode_item].astype(str).unique()
                 )
                 kode_benang_mapping[kode_trans] = unique_b
+                # Mengambil index baris item benang PERTAMA (entah di atas atau di bawah)
                 first_yarn_idx_dict[kode_trans] = benang_sub.index[0]
               else:
                 kode_benang_mapping[kode_trans] = "Tidak Ada TWP/MWP/TBM"
@@ -647,7 +651,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             cek_jumlah_benang_list.append("")
             list_item_kurang_lebih_list.append("")
 
-          # Hanya proses gudang Mesin Dyeing & Lab & Rnd untuk crosscheck benang & obat
+          # Hanya proses gudang Mesin Dyeing & Lab & Rnd
           if not ("mesin dyeing" in gudang or "lab & rnd" in gudang):
             crosscheck_qty_list.append("")
             selisih_list.append("")
@@ -661,7 +665,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           sel_val = ""
           sat_val = ""
 
-          # A. Cek Benang (Group-Level Qty Check) di baris item benang pertama
+          # A. Cek Benang (Group-Level Qty Check) - BERJALAN TERUS DI BARIS BENANG PERTAMA
           if is_first_yarn_row:
             target_val = row.get("QTY Target Standar (GR)", "")
             if (
@@ -718,7 +722,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
                 sel_val = diff_group
                 sat_val = "GR"
 
-          # B. Cek Obat TBB (Item-Level Medicine Audit) jika ada PIBC dan Dyelot
+          # B. Cek Obat TBB (Item-Level Medicine Audit) - HANYA JIKA ADA PIBC DAN DYELOT
           elif is_tbb_item and has_dyelot_data:
             ket_text_combined = ""
             for col_c in master_df.columns:
@@ -735,6 +739,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             )
             pibc_list = [m.upper().strip() for m in pibc_matches]
 
+            # JIKA TIDAK ADA PIBC, PENGECEKAN OBAT DI-SKIP (DIBIARKAN KOSONG)
             if pibc_list:
               matched_dyelot_rows = pd.DataFrame()
               if not dyelot_df.empty and d_col_dyelot1:
