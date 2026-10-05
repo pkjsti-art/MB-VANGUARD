@@ -433,7 +433,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               kode_benang_mapping[kode_trans] = ""
           elif wh_type == "softcone":
             if col_kode_item:
-              # TBB dikembalikan sebagai benang untuk Softcone
               benang_sub = sub_df[
                   sub_df[col_kode_item]
                   .astype(str)
@@ -990,7 +989,14 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               & (processed_df["Kode"] != "")
           ]["Kode"].unique()
 
-          # --- LOGIKA FINAL KELOMPOK BENANG INCORRECT (DENGAN HELPER GUDANG FLEKSIBEL) ---
+          df_inc_normal_full = processed_df[
+              processed_df["Kode"].isin(kodes_incorrect)
+          ]
+          df_inc_wajar_full = processed_df[
+              processed_df["Kode"].isin(kodes_wajar)
+          ]
+
+          # --- LOGIKA FINAL: INCORRECT BENANG (MURNI PER BARIS SESUAI PERMINTAAN) ---
           col_map_dl = {str(c).strip().upper(): c for c in processed_df.columns}
           c_kode_item = None
           for k, v in col_map_dl.items():
@@ -1003,7 +1009,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
                 c_kode_item = v
                 break
 
-          def filter_incorrect_benang(row):
+          def filter_incorrect_benang_simple(row):
             gudang_raw = str(row.get("Gudang", ""))
             wh_type = get_warehouse_type(gudang_raw)
             item_val = (
@@ -1013,35 +1019,24 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             )
             cc_val = str(row.get("Crosscheck Qty", "")).strip()
 
-            # Syarat: Crosscheck Qty baris benang tersebut harus bernilai INCORRECT
+            # 1. Baris harus berstatus "INCORRECT"
             if cc_val != "INCORRECT":
               return False
 
+            # 2. Berdasarkan jenis gudang, pastikan itu benar item benang
             if wh_type == "softcone":
-              if item_val.startswith(("TBB", "MBB", "MWP", "TWP", "TBM")):
-                return True
+              return item_val.startswith(("TBB", "MBB", "MWP", "TWP", "TBM"))
             elif wh_type == "mesin_dyeing_lab":
-              if item_val.startswith(("TWP", "MWP", "TBM")):
-                return True
+              return item_val.startswith(("TWP", "MWP", "TBM"))
+            
             return False
 
-          mask_inc_benang = processed_df.apply(filter_incorrect_benang, axis=1)
-          kodes_incorrect_benang = processed_df[
-              mask_inc_benang
-              & processed_df["Kode"].notna()
-              & (processed_df["Kode"] != "")
-          ]["Kode"].unique()
-
-          df_inc_normal_full = processed_df[
-              processed_df["Kode"].isin(kodes_incorrect)
-          ]
-          df_inc_wajar_full = processed_df[
-              processed_df["Kode"].isin(kodes_wajar)
-          ]
+          # Filter baris yang benar-benar memenuhi syarat di atas (murni per baris)
           df_inc_benang_full = processed_df[
-              processed_df["Kode"].isin(kodes_incorrect_benang)
+              processed_df.apply(filter_incorrect_benang_simple, axis=1)
           ]
 
+          # Simpan ke masing-masing sheet Excel
           df_inc_normal_full.to_excel(writer, index=False, sheet_name="INCORRECT")
           df_inc_wajar_full.to_excel(
               writer, index=False, sheet_name="INCORRECT (Selisih Wajar)"
@@ -1049,6 +1044,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           df_inc_benang_full.to_excel(
               writer, index=False, sheet_name="incorrect benang"
           )
+          
         excel_data_inc = output_buffer_inc.getvalue()
 
         st.download_button(
