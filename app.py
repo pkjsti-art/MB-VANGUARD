@@ -450,9 +450,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             "ROLL",
             "TALI",
             "KUR",
-            "AVL",
-            "CONS",
-            "HTC",
         ]
         for kode_trans in unique_kodes:
           sub_df = master_df[master_df["Kode"] == kode_trans]
@@ -985,14 +982,33 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               processed_df["Kode"].isin(kodes_wajar)
           ]
 
+          # Filter khusus INCORRECT BENANG (Status INCORRECT dan kode item berawalan benang/material)
+          if col_kode_item:
+            df_inc_benang = processed_df[
+                (processed_df["Crosscheck Qty"] == "INCORRECT")
+                & (
+                    processed_df[col_kode_item]
+                    .astype(str)
+                    .str.upper()
+                    .str.startswith(("TWP", "MWP", "TBM", "TBB", "MBB"), na=False)
+                )
+            ]
+          else:
+            df_inc_benang = processed_df[
+                processed_df["Crosscheck Qty"] == "INCORRECT"
+            ]
+
           df_inc_normal_full.to_excel(writer, index=False, sheet_name="INCORRECT")
           df_inc_wajar_full.to_excel(
               writer, index=False, sheet_name="INCORRECT (Selisih Wajar)"
           )
+          df_inc_benang.to_excel(
+              writer, index=False, sheet_name="INCORRECT BENANG"
+          )
         excel_data_inc = output_buffer_inc.getvalue()
 
         st.download_button(
-            label="📥 Download Rekap 1 Kelompok INCORRECT (2 Sheet)",
+            label="📥 Download Rekap 1 Kelompok INCORRECT (3 Sheet)",
             data=excel_data_inc,
             file_name="Laporan_Rekap_Incorrect_Satu_Kelompok.xlsx",
             mime=(
