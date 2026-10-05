@@ -109,6 +109,14 @@ if "raw_master" not in st.session_state:
 if "raw_dyelot" not in st.session_state:
   st.session_state.raw_dyelot = None
 
+
+# Fungsi pembersih string kode agar kebal terhadap perbedaan titik/strip/spasi
+def clean_code(val):
+  if pd.isna(val):
+    return ""
+  return re.sub(r"[^A-Za-z0-9]", "", str(val)).upper()
+
+
 # --- MENU 1: MASTER DATA (UPLOAD) ---
 if menu_pilihan == "📂 Master Data (Upload)":
   st.markdown("### 📂 Unggah File Master Export ERP & Master Dyelot")
@@ -329,7 +337,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             return pd.to_numeric(str(val), errors="coerce")
 
 
-        # QTY Target Standar (GR)
+        # QTY Target Standar (GR) - Tampilan Asli (Tidak di-forward fill)
         if col_target_qty and col_target_unit:
           master_df["QTY Target Standar (GR)"] = master_df.apply(
               lambda row: (
@@ -355,6 +363,15 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             master_df = master_df[cols]
         else:
           master_df["QTY Target Standar (GR)"] = ""
+
+        # KOLOM BANTU INTERNAL (Di-ffill khusus untuk backend kalkulasi tanpa merusak tampilan asli)
+        if "Kode" in master_df.columns and "QTY Target Standar (GR)" in master_df.columns:
+          master_df["_temp_target_gr"] = master_df["QTY Target Standar (GR)"].copy()
+          master_df["_temp_target_gr"] = master_df.groupby("Kode")[
+              "_temp_target_gr"
+          ].ffill().bfill()
+        else:
+          master_df["_temp_target_gr"] = master_df["QTY Target Standar (GR)"]
 
         # Qty BB Standar (GR)
         if col_qty and col_unit:
@@ -504,7 +521,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               )
               if qty_mb_std is None:
                 qty_mb_std = 0.0
-              mb_tbb_dict[item_code.upper()] = {
+              mb_tbb_dict[clean_code(item_code)] = {
                   "code": item_code,
                   "name": item_name,
                   "qty": qty_mb_std,
@@ -517,13 +534,11 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             )
             if not d_k_obat and d_col_kode is None:
               for val_d in d_row.values:
-                if pd.notna(val_d) and str(val_d).strip().upper().startswith(
-                    "TBB"
-                ):
+                if pd.notna(val_d) and clean_code(val_d).startswith("TBB"):
                   d_k_obat = str(val_d).strip()
                   break
 
-            if d_k_obat.upper().startswith("TBB"):
+            if clean_code(d_k_obat).startswith("TBB"):
               d_name = (
                   str(d_row.get(d_col_nama, "")).strip()
                   if d_col_nama
@@ -540,7 +555,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
                   if parsed_val is not None and parsed_val > 0:
                     actual_val = parsed_val
                     break
-              dyelot_tbb_dict[d_k_obat.upper()] = {
+              dyelot_tbb_dict[clean_code(d_k_obat)] = {
                   "code": d_k_obat,
                   "name": d_name,
                   "qty": actual_val,
@@ -665,9 +680,10 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           sel_val = ""
           sat_val = ""
 
-          # A. Cek Benang (Group-Level Qty Check) - BERJALAN TERUS DI BARIS BENANG PERTAMA
+          # A. Cek Benang (Group-Level Qty Check) - BERJALAN TERUS DI BARIS BENANG PERTAMA (BAIK ADA ATAUPUN TIDAK ADA PIBC)
           if is_first_yarn_row:
-            target_val = row.get("QTY Target Standar (GR)", "")
+            # Menggunakan kolom temporary _temp_target_gr untuk membaca nilai meski di baris bawah
+            target_val = row.get("_temp_target_gr", "")
             if (
                 target_val != ""
                 and pd.notna(target_val)
@@ -763,6 +779,8 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               else:
                 found_item = False
                 item_matched_in_dyelot = None
+                clean_item_code = clean_code(item_code)
+
                 for _, d_row in matched_dyelot_rows.iterrows():
                   d_k_obat = (
                       str(d_row.get(d_col_kode, "")).strip()
@@ -773,12 +791,12 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
                     for val_d in d_row.values:
                       if (
                           pd.notna(val_d)
-                          and str(val_d).strip().upper() == item_code.upper()
+                          and clean_code(val_d) == clean_item_code
                       ):
                         d_k_obat = str(val_d).strip()
                         break
 
-                  if d_k_obat.upper() == item_code.upper():
+                  if clean_code(d_k_obat) == clean_item_code:
                     found_item = True
                     item_matched_in_dyelot = d_row
                     break
@@ -837,6 +855,10 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
         master_df["Selisih"] = selisih_list
         master_df["Satuan Selisih"] = satuan_selisih_list
         master_df["List Item Kurang/Lebih"] = list_item_kurang_lebih_list
+
+        # Hapus kolom sementara _temp_target_gr agar tidak ikut tampil di layar / export Excel
+        if "_temp_target_gr" in master_df.columns:
+          master_df = master_df.drop(columns=["_temp_target_gr"])
 
         st.session_state.processed_df = master_df
         st.success("✨ Proses validasi dan audit resep obat berhasil dijalankan!")
