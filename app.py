@@ -287,7 +287,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               break
         if not col_target_unit:
           for k, v in col_mapping_std.items():
-            if "UNIT" in k and v != col_unit:
+            if "UNIT" in k and v != col_target_unit:
               col_target_unit = v
               break
         if not col_qty:
@@ -450,6 +450,9 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             "ROLL",
             "TALI",
             "KUR",
+            "HTC",
+            "CONS",
+            "AVL",
         ]
         for kode_trans in unique_kodes:
           sub_df = master_df[master_df["Kode"] == kode_trans]
@@ -998,7 +1001,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               processed_df["Kode"].isin(kodes_wajar)
           ]
 
-          # Logika Seleksi Kelompok untuk Sheet INCORRECT BENANG
+          # Logika Seleksi Kelompok untuk Sheet INCORRECT BENANG (Direvisi & Diperketat)
           kodes_inc_benang = []
           unique_kodes_all = processed_df["Kode"].dropna().unique()
 
@@ -1024,12 +1027,12 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
                   str(row_item.get(col_kode_item_dl, "")).strip().upper()
               )
               cc_qty = str(row_item.get("Crosscheck Qty", "")).strip()
-              if (
-                  item_c.startswith(valid_prefixes_benang)
-                  and cc_qty == "INCORRECT"
-              ):
-                has_incorrect_yarn = True
-                break
+
+              # Hanya masukkan jika baris benang valid DAN benar-benar berstatus INCORRECT (bukan karena selisih obat TBB)
+              if item_c.startswith(valid_prefixes_benang) and not item_c.startswith("TBB"):
+                if cc_qty == "INCORRECT":
+                  has_incorrect_yarn = True
+                  break
 
             if has_incorrect_yarn:
               kodes_inc_benang.append(kode_trans)
