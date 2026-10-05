@@ -287,7 +287,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               break
         if not col_target_unit:
           for k, v in col_mapping_std.items():
-            if "UNIT" in k and v != col_unit:
+            if "UNIT" in k and v != col_target_unit:
               col_target_unit = v
               break
         if not col_qty:
@@ -982,21 +982,47 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               processed_df["Kode"].isin(kodes_wajar)
           ]
 
-          # Filter khusus INCORRECT BENANG (Status INCORRECT dan kode item berawalan benang/material)
-          if col_kode_item:
-            df_inc_benang = processed_df[
-                (processed_df["Crosscheck Qty"] == "INCORRECT")
-                & (
-                    processed_df[col_kode_item]
-                    .astype(str)
-                    .str.upper()
-                    .str.startswith(("TWP", "MWP", "TBM", "TBB", "MBB"), na=False)
-                )
-            ]
-          else:
-            df_inc_benang = processed_df[
-                processed_df["Crosscheck Qty"] == "INCORRECT"
-            ]
+          # Logika Seleksi Kelompok untuk Sheet INCORRECT BENANG
+          kodes_inc_benang = []
+          unique_kodes_all = processed_df["Kode"].dropna().unique()
+
+          for kode_trans in unique_kodes_all:
+            sub_df = processed_df[processed_df["Kode"] == kode_trans]
+            if sub_df.empty:
+              continue
+            gudang_raw = str(sub_df.iloc[0].get("Gudang", "")).strip().lower()
+
+            # Tentukan prefix kode benang berdasarkan gudang
+            if "softcone" in gudang_raw:
+              valid_prefixes_benang = ("TWP", "MWP", "TBM", "TBB", "MBB")
+            elif "mesin dyeing" in gudang_raw or "lab & rnd" in gudang_raw:
+              valid_prefixes_benang = ("TWP", "MWP", "TBM")
+            else:
+              valid_prefixes_benang = ()
+
+            if not valid_prefixes_benang or not col_kode_item:
+              continue
+
+            # Cek apakah dalam kelompok ini ada baris benang yang status Crosscheck Qty-nya "INCORRECT"
+            has_incorrect_yarn = False
+            for _, row_item in sub_df.iterrows():
+              item_c = (
+                  str(row_item.get(col_kode_item, "")).strip().upper()
+              )
+              cc_qty = str(row_item.get("Crosscheck Qty", "")).strip()
+              if (
+                  item_c.startswith(valid_prefixes_benang)
+                  and cc_qty == "INCORRECT"
+              ):
+                has_incorrect_yarn = True
+                break
+
+            if has_incorrect_yarn:
+              kodes_inc_benang.append(kode_trans)
+
+          df_inc_benang = processed_df[
+              processed_df["Kode"].isin(kodes_inc_benang)
+          ]
 
           df_inc_normal_full.to_excel(writer, index=False, sheet_name="INCORRECT")
           df_inc_wajar_full.to_excel(
