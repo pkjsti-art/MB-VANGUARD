@@ -222,14 +222,15 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
     )
   else:
     if st.session_state.raw_dyelot is None:
-      st.warning(
-          "⚠️ Perhatian: File Master Dyelot belum di-upload. Kolom Audit"
-          " Resep Obat akan kosong jika file resep belum disertakan."
+      st.info(
+          "ℹ️ Informasi: File Master Dyelot belum di-upload. Pengecekan"
+          " kuantitas standar (cek benang/material) tetap akan berjalan"
+          " sepenuhnya pada seluruh data."
       )
 
     if st.button("🚀 Jalankan Proses & Validasi Data Lengkap"):
       with st.spinner(
-          "Sedang mengeksekusi cek benang & audit resep obat akurat..."
+          "Sedang mengeksekusi validasi kuantitas & audit resep obat..."
       ):
         master_df = st.session_state.raw_master.copy()
 
@@ -390,37 +391,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
         else:
           master_df["Qty BB Standar (GR)"] = ""
 
-        # --- 4. LOGIKA UTAMA: CROSSCHECK QTY (CEK BENANG) SEPERTI SEMULA ---
-        crosscheck_qty_list = []
-        for idx, row in master_df.iterrows():
-          item_code = (
-              str(row.get(col_kode_item, "")).strip().upper()
-              if col_kode_item
-              else ""
-          )
-          # Logika asli pengecekan qty benang/material (membandingkan Qty dengan Target Qty jika ada)
-          t_qty = parse_numeric(row.get(col_target_qty))
-          q_val = parse_numeric(row.get(col_qty))
-
-          if t_qty is not None and q_val is not None:
-            if abs(t_qty - q_val) < 0.0001:
-              crosscheck_qty_list.append("CORRECT")
-            else:
-              crosscheck_qty_list.append("INCORRECT")
-          else:
-            # Jika baris header transaksi atau total atau tidak ada target
-            if (
-                item_code == ""
-                or "TOTAL" in item_code
-                or item_code == "OVERHEAD COST"
-            ):
-              crosscheck_qty_list.append("")
-            else:
-              crosscheck_qty_list.append("CORRECT" if q_val is not None else "")
-
-        master_df["Crosscheck Qty"] = crosscheck_qty_list
-
-        # 5. Pemetaan Cek Benang (Text) per Kelompok Transaksi
+        # 4. Pemetaan Cek Benang (Text) per Kelompok Transaksi
         cek_jumlah_benang_list = []
         unique_kodes = master_df["Kode"].dropna().unique()
 
@@ -509,10 +480,10 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
               "Cek jumlah benang"
           ].fillna("")
 
-        # --- 6. AUDIT OBAT (CHEMICAL & DYESTUFF) MENGGUNAKAN KOLOM KHUSUS OBAT ---
-        crosscheck_obat_list = []
-        selisih_obat_list = []
-        satuan_selisih_obat_list = []
+        # --- 5. LOGIKA GABUNGAN DENGAN RESTRIKSI GUDANG KHUSUS OBAT ---
+        crosscheck_qty_list = []
+        selisih_list = []
+        satuan_selisih_list = []
         list_item_kurang_lebih_list = []
 
         dyelot_df = st.session_state.raw_dyelot
@@ -566,6 +537,11 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             continue
 
           first_row_sub = sub_df.iloc[0]
+          gudang_raw = str(first_row_sub.get("Gudang", "")).strip().lower()
+          
+          # HANYA JALANKAN AUDIT OBAT DI GUDANG MESIN DYEING & LAB & RND
+          is_valid_warehouse_for_dyelot = ("mesin dyeing" in gudang_raw) or ("lab & rnd" in gudang_raw)
+
           ket_text_combined = ""
           for col_c in master_df.columns:
             col_c_up = str(col_c).strip().upper()
@@ -581,7 +557,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           )
           pibc_list = [m.upper().strip() for m in pibc_matches]
 
-          if not has_dyelot_data or not pibc_list:
+          if not has_dyelot_data or not pibc_list or not is_valid_warehouse_for_dyelot:
             group_summary_dict[kode_trans] = ""
             continue
 
@@ -692,30 +668,16 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           else:
             group_summary_dict[kode_trans] = " | ".join(issues)
 
+        # Iterasi baris per baris untuk pengisian Crosscheck Qty secara universal
         for idx, row in master_df.iterrows():
           item_code = (
               str(row.get(col_kode_item, "")).strip() if col_kode_item else ""
           )
           kode_trans = str(row.get("Kode", ""))
+          gudang = str(row.get("Gudang", "")).strip().lower()
+          is_valid_warehouse_for_dyelot = ("mesin dyeing" in gudang) or ("lab & rnd" in gudang)
 
-          if not item_code.upper().startswith("TBB"):
-            crosscheck_obat_list.append("")
-            selisih_obat_list.append("")
-            satuan_selisih_obat_list.append("")
-
-            first_idx = (
-                master_df[master_df["Kode"] == kode_trans].index[0]
-                if kode_trans in master_df["Kode"].values
-                else -1
-            )
-            if idx == first_idx and kode_trans in group_summary_dict:
-              list_item_kurang_lebih_list.append(
-                  group_summary_dict[kode_trans]
-              )
-            else:
-              list_item_kurang_lebih_list.append("")
-            continue
-
+          # Ambil teks keterangan untuk cek PIBC
           ket_text_combined = ""
           for col_c in master_df.columns:
             col_c_up = str(col_c).strip().upper()
@@ -731,100 +693,105 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           )
           pibc_list = [m.upper().strip() for m in pibc_matches]
 
-          if not pibc_list or not has_dyelot_data:
-            crosscheck_obat_list.append("")
-            selisih_obat_list.append("")
-            satuan_selisih_obat_list.append("")
+          checked_by_dyelot = False
 
-            first_idx = (
-                master_df[master_df["Kode"] == kode_trans].index[0]
-                if kode_trans in master_df["Kode"].values
-                else -1
-            )
-            if idx == first_idx:
-              list_item_kurang_lebih_list.append(
-                  group_summary_dict.get(kode_trans, "")
-              )
-            else:
-              list_item_kurang_lebih_list.append("")
-            continue
+          # Validasi dyelot obat HANYA jika item TBB, ada file & PIBC, dan di gudang Mesin Dyeing / Lab & RND
+          if item_code.upper().startswith("TBB") and has_dyelot_data and pibc_list and is_valid_warehouse_for_dyelot:
+            matched_dyelot_rows = pd.DataFrame()
+            if d_col_dyelot1:
+              mask = False
+              for pibc_code in pibc_list:
+                mask = mask | (
+                    dyelot_df[d_col_dyelot1]
+                    .astype(str)
+                    .str.upper()
+                    .str.contains(re.escape(pibc_code), na=False)
+                )
+              matched_dyelot_rows = dyelot_df[mask]
 
-          matched_dyelot_rows = pd.DataFrame()
-          if not dyelot_df.empty and d_col_dyelot1:
-            mask = False
-            for pibc_code in pibc_list:
-              mask = mask | (
-                  dyelot_df[d_col_dyelot1]
-                  .astype(str)
-                  .str.upper()
-                  .str.contains(re.escape(pibc_code), na=False)
-              )
-            matched_dyelot_rows = dyelot_df[mask]
+            if not matched_dyelot_rows.empty:
+              found_item = False
+              item_matched_in_dyelot = None
+              for _, d_row in matched_dyelot_rows.iterrows():
+                d_k_obat = (
+                    str(d_row.get(d_col_kode, "")).strip() if d_col_kode else ""
+                )
+                if not d_k_obat and d_col_kode is None:
+                  for val_d in d_row.values:
+                    if (
+                        pd.notna(val_d)
+                        and str(val_d).strip().upper() == item_code.upper()
+                    ):
+                      d_k_obat = str(val_d).strip()
+                      break
 
-          if matched_dyelot_rows.empty:
-            crosscheck_obat_list.append("INCORRECT")
-            qty_mb_std = parse_numeric(row.get("Qty BB Standar (GR)", 0)) or 0.0
-            selisih_obat_list.append(qty_mb_std)
-            satuan_selisih_obat_list.append("GR")
-            first_idx = master_df[master_df["Kode"] == kode_trans].index[0]
-            if idx == first_idx:
-              list_item_kurang_lebih_list.append(
-                  group_summary_dict.get(kode_trans, "")
-              )
-            else:
-              list_item_kurang_lebih_list.append("")
-            continue
-
-          found_item = False
-          item_matched_in_dyelot = None
-          for _, d_row in matched_dyelot_rows.iterrows():
-            d_k_obat = (
-                str(d_row.get(d_col_kode, "")).strip() if d_col_kode else ""
-            )
-            if not d_k_obat and d_col_kode is None:
-              for val_d in d_row.values:
-                if (
-                    pd.notna(val_d)
-                    and str(val_d).strip().upper() == item_code.upper()
-                ):
-                  d_k_obat = str(val_d).strip()
+                if d_k_obat.upper() == item_code.upper():
+                  found_item = True
+                  item_matched_in_dyelot = d_row
                   break
 
-            if d_k_obat.upper() == item_code.upper():
-              found_item = True
-              item_matched_in_dyelot = d_row
-              break
-
-          qty_mb_std = parse_numeric(row.get("Qty BB Standar (GR)", 0)) or 0.0
-
-          if found_item and item_matched_in_dyelot is not None:
-            actual_dyelot = 0.0
-            if d_col_actual:
-              actual_dyelot = (
-                  parse_numeric(item_matched_in_dyelot.get(d_col_actual, 0))
-                  or 0.0
+              qty_mb_std = (
+                  parse_numeric(row.get("Qty BB Standar (GR)", 0)) or 0.0
               )
-            else:
-              for val_d in item_matched_in_dyelot.values:
-                parsed_val = parse_numeric(val_d)
-                if parsed_val is not None and parsed_val > 0:
-                  actual_dyelot = parsed_val
-                  break
 
-            diff_obat = round(qty_mb_std - actual_dyelot, 4)
-            if diff_obat == 0:
-              crosscheck_obat_list.append("CORRECT")
-              selisih_obat_list.append(0)
-              satuan_selisih_obat_list.append("GR")
-            else:
-              crosscheck_obat_list.append("INCORRECT")
-              selisih_obat_list.append(diff_obat)
-              satuan_selisih_obat_list.append("GR")
-          else:
-            crosscheck_obat_list.append("INCORRECT")
-            selisih_obat_list.append(qty_mb_std)
-            satuan_selisih_obat_list.append("GR")
+              if found_item and item_matched_in_dyelot is not None:
+                actual_dyelot = 0.0
+                if d_col_actual:
+                  actual_dyelot = (
+                      parse_numeric(item_matched_in_dyelot.get(d_col_actual, 0))
+                      or 0.0
+                  )
+                else:
+                  for val_d in item_matched_in_dyelot.values:
+                    parsed_val = parse_numeric(val_d)
+                    if parsed_val is not None and parsed_val > 0:
+                      actual_dyelot = parsed_val
+                      break
 
+                diff_obat = round(qty_mb_std - actual_dyelot, 4)
+                if diff_obat == 0:
+                  crosscheck_qty_list.append("CORRECT")
+                  selisih_list.append(0)
+                  satuan_selisih_list.append("GR")
+                else:
+                  crosscheck_qty_list.append("INCORRECT")
+                  selisih_list.append(diff_obat)
+                  satuan_selisih_list.append("GR")
+              else:
+                crosscheck_qty_list.append("INCORRECT")
+                selisih_list.append(qty_mb_std)
+                satuan_selisih_list.append("GR")
+
+              checked_by_dyelot = True
+
+          # JIKA TIDAK DIVERIFIKASI OLEH DYELOT, JALANKAN CEK KUANTITAS STANDAR
+          if not checked_by_dyelot:
+            t_qty = parse_numeric(
+                row.get(col_target_qty) if col_target_qty else None
+            )
+            q_val = parse_numeric(row.get(col_qty) if col_qty else None)
+
+            if t_qty is not None and q_val is not None:
+              if abs(t_qty - q_val) < 0.0001:
+                crosscheck_qty_list.append("CORRECT")
+              else:
+                crosscheck_qty_list.append("INCORRECT")
+            else:
+              if (
+                  item_code == ""
+                  or "TOTAL" in item_code.upper()
+                  or item_code.upper() == "OVERHEAD COST"
+              ):
+                crosscheck_qty_list.append("")
+              else:
+                crosscheck_qty_list.append(
+                    "CORRECT" if q_val is not None else ""
+                )
+
+            selisih_list.append("")
+            satuan_selisih_list.append("")
+
+          # Ringkasan Item Kurang/Lebih di baris pertama kelompok transaksi
           first_idx = (
               master_df[master_df["Kode"] == kode_trans].index[0]
               if kode_trans in master_df["Kode"].values
@@ -837,16 +804,16 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           else:
             list_item_kurang_lebih_list.append("")
 
-        # Masukkan hasil audit obat ke kolom khusus obat
-        master_df["Crosscheck Obat"] = crosscheck_obat_list
-        master_df["Selisih Obat"] = selisih_obat_list
-        master_df["Satuan Selisih Obat"] = satuan_selisih_obat_list
+        # Masukkan hasil ke dalam kolom DataFrame utama
+        master_df["Crosscheck Qty"] = crosscheck_qty_list
+        master_df["Selisih"] = selisih_list
+        master_df["Satuan Selisih"] = satuan_selisih_list
         master_df["List Item Kurang/Lebih"] = list_item_kurang_lebih_list
 
         st.session_state.processed_df = master_df
         st.success(
-            "✨ Proses validasi cek benang & audit resep obat berhasil"
-            " dijalankan!"
+            "✨ Proses validasi kuantitas benang & audit resep obat (dengan"
+            " pembatasan gudang) berhasil dijalankan!"
         )
 
     # Tampilkan hasil & tombol download
@@ -866,13 +833,10 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             label="Total Kelompok Transaksi", value=f"{total_trx:,} Transaksi"
         )
       with m2:
-        st.metric(
-            label="Crosscheck Qty Benang: CORRECT", value=f"{correct_count:,}"
-        )
+        st.metric(label="Crosscheck Qty: CORRECT", value=f"{correct_count:,}")
       with m3:
         st.metric(
-            label="Crosscheck Qty Benang: INCORRECT",
-            value=f"{incorrect_normal:,}",
+            label="Crosscheck Qty: INCORRECT", value=f"{incorrect_normal:,}"
         )
 
       st.markdown("---")
@@ -926,7 +890,7 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
       st.markdown("---")
 
       status_filter = st.selectbox(
-          "🔍 Filter Tampilan Berdasarkan Status Crosscheck Qty Benang:",
+          "🔍 Filter Tampilan Berdasarkan Status Crosscheck Qty:",
           ["Tampilkan Semua", "CORRECT", "INCORRECT"],
       )
 
