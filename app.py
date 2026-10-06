@@ -13,7 +13,7 @@ st.set_page_config(
     layout="wide",
 )
 
-# Custom Styling CSS - Tema Modern Dark Slate (Executive Dark Mode)
+# Custom Styling CSS - Tema Modern Dark Slate & Custom Sidebar Navigation
 st.markdown(
     """
     <style>
@@ -118,23 +118,39 @@ st.markdown(
         color: inherit !important;
     }
 
-    /* Styling Sidebar */
+    /* Styling Sidebar Elegan & Modern */
     section[data-testid="stSidebar"] {
-        background-color: #111827;
-        border-right: 1px solid #1F2937;
+        background-color: #0F172A;
+        border-right: 1px solid #1E293B;
+        padding-top: 1rem;
     }
     section[data-testid="stSidebar"] span,
     section[data-testid="stSidebar"] p,
     section[data-testid="stSidebar"] label,
     section[data-testid="stSidebar"] div {
         color: #E2E8F0 !important;
-        font-weight: 500;
+    }
+    
+    /* Sembunyikan radio button bawaan Streamlit agar bersih */
+    section[data-testid="stSidebar"] .stRadio > div {
+        gap: 10px;
     }
     section[data-testid="stSidebar"] .stRadio label {
+        background-color: #1E293B;
+        border: 1px solid #334155;
+        padding: 12px 16px;
+        border-radius: 12px;
+        width: 100%;
+        cursor: pointer;
+        transition: all 0.25s ease;
         font-weight: 600;
+    }
+    section[data-testid="stSidebar"] .stRadio label:hover {
+        background-color: #334155;
+        border-color: #00F2FE;
         color: #00F2FE !important;
     }
-
+    
     /* Elemen Pembatas / Divider */
     hr {
         margin: 2rem 0;
@@ -157,9 +173,20 @@ st.markdown(
 )
 
 # --- SIDEBAR NAVIGASI ---
-st.sidebar.markdown("### 🧭 Menu Navigasi")
+st.sidebar.markdown(
+    """
+    <div style="padding: 10px 0 15px 0; border-bottom: 1px solid #1E293B; margin-bottom: 20px;">
+        <h3 style="margin: 0; color: #00F2FE; font-size: 1.25rem; font-weight: 700;">🧭 Menu Navigasi</h3>
+        <p style="margin: 5px 0 0 0; color: #94A3B8; font-size: 0.85rem;">Pilih Modul Sistem Audit</p>
+    </div>
+""",
+    unsafe_allow_html=True,
+)
+
 menu_pilihan = st.sidebar.radio(
-    "Pilih Modul Sistem:", ["📂 Master Data (Upload)", "🚀 Proses & Analisis Data"]
+    "Pilih Modul Sistem:",
+    ["📂 Master Data (Upload)", "🚀 Proses & Analisis Data"],
+    label_visibility="collapsed",
 )
 
 # Inisialisasi Session State
