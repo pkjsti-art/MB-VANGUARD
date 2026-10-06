@@ -8,7 +8,7 @@ import streamlit as st
 
 # Konfigurasi Halaman Streamlit
 st.set_page_config(
-    page_title="MB-VANGUARD | Audit Data Manufacture Basic",
+    page_title="DATA CONTROL DYEING",
     page_icon="⚡",
     layout="wide",
 )
@@ -165,19 +165,18 @@ st.markdown(
 st.markdown(
     """
     <div class="main-header">
-        <h1>⚡ MB-VANGUARD</h1>
+        <h1>⚡ DATA CONTROL DYEING</h1>
         <p>Manufacture Basic - Intelligent Data Validation & Unified Audit System</p>
     </div>
 """,
     unsafe_allow_html=True,
 )
 
-# --- SIDEBAR NAVIGASI ---
+# --- SIDEBAR NAVIGASI (Logo DCD) ---
 st.sidebar.markdown(
     """
-    <div style="padding: 10px 0 15px 0; border-bottom: 1px solid #1E293B; margin-bottom: 20px;">
-        <h3 style="margin: 0; color: #00F2FE; font-size: 1.25rem; font-weight: 700;">🧭 Menu Navigasi</h3>
-        <p style="margin: 5px 0 0 0; color: #94A3B8; font-size: 0.85rem;">Pilih Modul Sistem Audit</p>
+    <div style="text-align: center; padding: 10px 0 20px 0; border-bottom: 1px solid #1E293B; margin-bottom: 25px;">
+        <h1 style="margin: 0; color: #00F2FE; font-size: 2rem; font-weight: 900; letter-spacing: 0.1em;">DCD</h1>
     </div>
 """,
     unsafe_allow_html=True,
