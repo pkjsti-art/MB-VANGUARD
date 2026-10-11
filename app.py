@@ -198,6 +198,36 @@ if "raw_dyelot" not in st.session_state:
 if "benang_incorrect_kodes" not in st.session_state:
   st.session_state.benang_incorrect_kodes = set()
 
+# Fungsi global konversi angka aman (parse_numeric)
+def parse_numeric(val):
+  if pd.isna(val) or str(val).strip() == "" or str(val).strip().upper() == "NAN":
+    return None
+  if isinstance(val, (int, float)):
+    return float(val)
+  try:
+    s = str(val).strip()
+    if "," in s and "." in s:
+      if s.find(",") > s.find("."):
+        s = s.replace(".", "").replace(",", ".")
+      else:
+        s = s.replace(",", "")
+    elif "," in s and "." not in s:
+      s = s.replace(",", ".")
+    return float(s)
+  except:
+    return pd.to_numeric(str(val), errors="coerce")
+
+# Fungsi aman untuk memastikan kolom-kolom target berformat numerik excel
+def _ensure_excel_number_cols(df_input):
+  d_out = df_input.copy()
+  for col in d_out.columns:
+    col_upper = str(col).strip().upper()
+    if any(k in col_upper for k in ["TARGET QTY", "QTY TARGET STANDAR", "QTY BB STANDAR", "HARGA", "TOTAL", "SELISIH"]) or col_upper == "QTY":
+      d_out[col] = d_out[col].apply(
+          lambda x: parse_numeric(x) if pd.notna(x) and str(x).strip() != "" and str(x).strip().upper() != "NAN" else None
+      )
+  return d_out
+
 # --- MENU 1: MASTER DATA (UPLOAD) ---
 if menu_pilihan == "📂 Master Data (Upload)":
   st.markdown("### 📂 Unggah Berkas Master Ekspor ERP & Master Resep Dyelot")
@@ -403,25 +433,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
             if "Kode" in master_df.columns and col != "Kode":
               master_df[col] = master_df.groupby("Kode")[col].ffill()
             master_df[col] = master_df[col].ffill()
-
-        # Fungsi konversi angka aman
-        def parse_numeric(val):
-          if pd.isna(val) or str(val).strip() == "":
-            return None
-          if isinstance(val, (int, float)):
-            return float(val)
-          try:
-            s = str(val).strip()
-            if "," in s and "." in s:
-              if s.find(",") > s.find("."):
-                s = s.replace(".", "").replace(",", ".")
-              else:
-                s = s.replace(",", "")
-            elif "," in s and "." not in s:
-              s = s.replace(",", ".")
-            return float(s)
-          except:
-            return pd.to_numeric(str(val), errors="coerce")
 
         # 2. QTY Target Standar (GR)
         if col_target_qty and col_target_unit:
@@ -1023,18 +1034,6 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
         st.metric(label="Status: Selisih Wajar", value=f"{incorrect_wajar:,}")
 
       st.markdown("---")
-
-      # Fungsi aman untuk memastikan kolom-kolom target berformat numerik excel tanpa menghapus nilainya
-      def _ensure_excel_number_cols(df_input):
-        d_out = df_input.copy()
-        for col in d_out.columns:
-          col_upper = str(col).strip().upper()
-          if any(k in col_upper for k in ["TARGET QTY", "QTY TARGET STANDAR", "QTY BB STANDAR", "HARGA", "TOTAL", "SELISIH"]) or col_upper == "QTY":
-            # Hanya ubah nilai yang ada isinya menggunakan parse_numeric agar data angka tidak menjadi NaN/hilang
-            d_out[col] = d_out[col].apply(
-                lambda x: parse_numeric(x) if pd.notna(x) and str(x).strip() != "" and str(x).strip().upper() != "NAN" else None
-            )
-        return d_out
 
       # BAGIAN TOMBOL DOWNLOAD
       col_dl1, col_dl2 = st.columns(2)
