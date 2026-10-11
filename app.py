@@ -1024,13 +1024,31 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
 
       st.markdown("---")
 
+      # Fungsi bantu untuk memastikan kolom-kolom berikut bertipe numeric sebelum export Excel
+      def _ensure_excel_number_cols(df_input):
+        d_out = df_input.copy()
+        numeric_cols_target = [
+            "Target Qty",
+            "QTY Target Standar (GR)",
+            "Qty",
+            "QTY BB Standar (GR)",
+            "Harga",
+            "Total",
+            "Selisih"
+        ]
+        for col_name in numeric_cols_target:
+          if col_name in d_out.columns:
+            d_out[col_name] = pd.to_numeric(d_out[col_name], errors="coerce")
+        return d_out
+
       # BAGIAN TOMBOL DOWNLOAD
       col_dl1, col_dl2 = st.columns(2)
 
       with col_dl1:
         output_buffer_all = io.BytesIO()
+        df_all_export = _ensure_excel_number_cols(processed_df)
         with pd.ExcelWriter(output_buffer_all, engine="openpyxl") as writer:
-          processed_df.to_excel(
+          df_all_export.to_excel(
               writer, index=False, sheet_name="Master_Validasi"
           )
         excel_data_all = output_buffer_all.getvalue()
@@ -1076,6 +1094,11 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
           df_inc_benang_full = processed_df[
               processed_df["Kode"].isin(benang_kodes)
           ]
+
+          # Pastikan format number pada sheet-sheet rekap incorrect
+          df_inc_normal_full = _ensure_excel_number_cols(df_inc_normal_full)
+          df_inc_wajar_full = _ensure_excel_number_cols(df_inc_wajar_full)
+          df_inc_benang_full = _ensure_excel_number_cols(df_inc_benang_full)
 
           df_inc_normal_full.to_excel(writer, index=False, sheet_name="INCORRECT")
           df_inc_wajar_full.to_excel(
