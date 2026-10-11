@@ -1024,21 +1024,16 @@ elif menu_pilihan == "🚀 Proses & Analisis Data":
 
       st.markdown("---")
 
-      # Fungsi bantu untuk memastikan kolom-kolom berikut bertipe numeric sebelum export Excel
+      # Fungsi aman untuk memastikan kolom-kolom target berformat numerik excel tanpa menghapus nilainya
       def _ensure_excel_number_cols(df_input):
         d_out = df_input.copy()
-        numeric_cols_target = [
-            "Target Qty",
-            "QTY Target Standar (GR)",
-            "Qty",
-            "QTY BB Standar (GR)",
-            "Harga",
-            "Total",
-            "Selisih"
-        ]
-        for col_name in numeric_cols_target:
-          if col_name in d_out.columns:
-            d_out[col_name] = pd.to_numeric(d_out[col_name], errors="coerce")
+        for col in d_out.columns:
+          col_upper = str(col).strip().upper()
+          if any(k in col_upper for k in ["TARGET QTY", "QTY TARGET STANDAR", "QTY BB STANDAR", "HARGA", "TOTAL", "SELISIH"]) or col_upper == "QTY":
+            # Hanya ubah nilai yang ada isinya menggunakan parse_numeric agar data angka tidak menjadi NaN/hilang
+            d_out[col] = d_out[col].apply(
+                lambda x: parse_numeric(x) if pd.notna(x) and str(x).strip() != "" and str(x).strip().upper() != "NAN" else None
+            )
         return d_out
 
       # BAGIAN TOMBOL DOWNLOAD
